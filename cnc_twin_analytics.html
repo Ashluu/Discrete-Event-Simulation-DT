@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CNC Digital Twin — Analytics</title>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2.27.0/plotly.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f8f9fa;--bg2:#fff;--border:#dee2e6;--text:#212529;--text2:#6c757d;
+  --blue:#2563EB;--green:#16a34a;--orange:#C2410C;--purple:#7C3AED;
+  --red:#dc2626;--amber:#d97706;--r:8px;
+}
+html,body{height:100%;font-family:system-ui,sans-serif;font-size:13px;color:var(--text);background:var(--bg);overflow:hidden}
+#layout{display:grid;grid-template-columns:260px 1fr;grid-template-rows:46px 1fr;height:100vh}
+
+/* toolbar */
+#tb{grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--bg2);border-bottom:1px solid var(--border);z-index:10}
+#tb h1{font-size:14px;font-weight:600}
+.badge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;background:#dbeafe;color:#1e40af}
+.sp{flex:1}
+.btn{padding:5px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);cursor:pointer;font-size:12px;font-family:inherit}
+.btn:hover{background:var(--bg)}
+.btn.go{background:var(--green);color:#fff;border-color:#15803d}
+.btn.go:hover{background:#15803d}
+
+/* sidebar */
+#sb{background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;padding:12px}
+.sec{font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;margin:12px 0 6px}
+.sec:first-child{margin-top:0}
+.pr{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.pr label{font-size:11px;color:var(--text2);width:110px;flex-shrink:0}
+.pr input[type=range]{flex:1;accent-color:var(--blue);height:3px;cursor:pointer}
+.pr .pv{font-size:11px;font-weight:600;width:36px;text-align:right;flex-shrink:0}
+.mc-exp{margin-bottom:4px}
+.mc-exp summary{font-size:11px;font-weight:600;cursor:pointer;padding:4px 6px;border-radius:5px;background:var(--bg);list-style:none;display:flex;align-items:center;justify-content:space-between}
+.mc-exp summary:hover{background:#e9ecef}
+.mc-exp summary::after{content:"▸";font-size:10px;color:var(--text2)}
+.mc-exp[open] summary::after{content:"▾"}
+.mc-inner{padding:6px 4px 4px}
+.hr{height:1px;background:var(--border);margin:10px 0}
+
+/* main */
+#main{overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:14px}
+.kpi-row{display:grid;grid-template-columns:repeat(8,1fr);gap:8px}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;text-align:center}
+.kl{font-size:10px;color:var(--text2);margin-bottom:3px}
+.kv{font-size:20px;font-weight:600;line-height:1}
+.ks{font-size:9px;color:var(--text2);margin-top:2px}
+.cg{color:var(--green)}.ca{color:var(--amber)}.cr{color:var(--red)}.cb{color:var(--blue)}
+
+/* tabs */
+#tabbar{display:flex;gap:2px;border-bottom:1px solid var(--border);flex-shrink:0}
+.tab{padding:6px 14px;cursor:pointer;font-size:12px;color:var(--text2);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--text);border-bottom-color:var(--blue);font-weight:600}
+.tab-content{display:none}.tab-content.on{display:block}
+
+/* charts */
+.chart-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chart-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px}
+.chart-title{font-size:12px;font-weight:600;margin-bottom:8px;color:var(--text)}
+
+/* table */
+.tbl-wrap{overflow-x:auto;border-radius:var(--r);border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{background:var(--bg);padding:7px 10px;text-align:left;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+tr:last-child td{border:none}
+tr:hover td{background:#f8f9fa}
+.util-bar{height:6px;border-radius:3px;display:inline-block;min-width:2px}
+.tag{display:inline-block;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:500}
+.tag-A{background:#dbeafe;color:#1e40af}
+.tag-B{background:#ffedd5;color:#9a3412}
+.tag-C{background:#ede9fe;color:#5b21b6}
+
+/* progress */
+#progress-wrap{display:none;align-items:center;gap:10px;padding:8px 12px;background:#eff6ff;border-radius:var(--r);border:1px solid #bfdbfe;font-size:12px}
+#prog-bar{flex:1;height:6px;background:#dbeafe;border-radius:3px;overflow:hidden}
+#prog-fill{height:100%;background:var(--blue);border-radius:3px;transition:width .2s;width:0%}
+
+/* event log */
+#evlog{height:300px;overflow-y:auto;font-family:monospace;font-size:10.5px;background:#1a1a16;border-radius:var(--r);padding:8px 10px}
+.ev{padding:1px 0;border-bottom:1px solid #2a2a26}
+.ev-final{color:#4ade80}.ev-break{color:#f87171}.ev-repair{color:#34d399}
+.ev-batch{color:#fbbf24}.ev-assy{color:#93c5fd}.ev-info{color:#6b7280}
+</style>
+</head>
+<body>
+<div id="layout">
+
+<div id="tb">
+  <h1>🏭 CNC Digital Twin — Analytics</h1>
+  <span class="badge">⬤ DES Simulation</span>
+  <div class="sp"></div>
+  <label style="font-size:11px;color:var(--text2)">Monte Carlo</label>
+  <input type="range" id="mc-sl" min="1" max="15" value="1" style="width:70px;accent-color:var(--blue)">
+  <span id="mc-val" style="font-size:11px;font-weight:600;min-width:30px">1×</span>
+  <label style="font-size:11px;color:var(--text2);margin-left:4px">Days</label>
+  <input type="range" id="days-sl" min="1" max="60" value="14" style="width:70px;accent-color:var(--blue)">
+  <span id="days-val" style="font-size:11px;font-weight:600;min-width:32px">14d</span>
+  <button class="btn go" id="run-btn">▶ Run</button>
+  <button class="btn" id="reset-btn">↺ Reset</button>
+</div>
+
+<div id="sb">
+  <div class="sec">Assembly gates</div>
+  <div class="pr"><label>Line A merge</label><input type="range" id="gmA" min="1" max="8" value="4" step="1"><span class="pv" id="gvmA">4</span></div>
+  <div class="pr"><label>Line B merge</label><input type="range" id="gmB" min="1" max="8" value="4" step="1"><span class="pv" id="gvmB">4</span></div>
+  <div class="pr"><label>Line C merge</label><input type="range" id="gmC" min="1" max="8" value="4" step="1"><span class="pv" id="gvmC">4</span></div>
+  <div class="pr"><label>Final merge</label><input type="range" id="gmF" min="1" max="6" value="3" step="1"><span class="pv" id="gvmF">3</span></div>
+  <div class="hr"></div>
+  <div class="sec">Logistics</div>
+  <div class="pr"><label>Transfer (min)</label><input type="range" id="gtrv" min="1" max="30" value="5" step="1"><span class="pv" id="gvtrv">5</span></div>
+  <div class="pr"><label>Variance (min)</label><input type="range" id="gtvar" min="0" max="15" value="3" step="1"><span class="pv" id="gvtvar">3</span></div>
+  <div class="hr"></div>
+  <div class="sec">Scheduling</div>
+  <div class="pr"><label>Batch (days)</label><input type="range" id="gbatch" min="3" max="30" value="7" step="1"><span class="pv" id="gvbatch">7</span></div>
+  <div class="hr"></div>
+  <div class="sec">Stochastics</div>
+  <div class="pr"><label>Eff. sigma %</label><input type="range" id="gsig" min="1" max="30" value="12" step="1"><span class="pv" id="gvsig">12</span></div>
+  <div class="pr"><label>Primary recov.</label><input type="range" id="gprim" min="80" max="99" value="95" step="1"><span class="pv" id="gvprim">95%</span></div>
+  <div class="pr"><label>Secondary rec.</label><input type="range" id="gsec" min="70" max="95" value="85" step="1"><span class="pv" id="gvsec">85%</span></div>
+  <div class="hr"></div>
+  <div class="sec">Per-machine parameters</div>
+  <div id="mc-cards"></div>
+</div>
+
+<div id="main">
+  <div id="progress-wrap">
+    <span id="prog-txt">Running…</span>
+    <div id="prog-bar"><div id="prog-fill"></div></div>
+    <span id="prog-pct">0%</span>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi"><div class="kl">Final output</div><div class="kv cg" id="kFinal">—</div><div class="ks">units</div></div>
+    <div class="kpi"><div class="kl">OEE</div><div class="kv" id="kOee">—</div></div>
+    <div class="kpi"><div class="kl">Throughput/h</div><div class="kv" id="kTph">—</div></div>
+    <div class="kpi"><div class="kl">Line A</div><div class="kv cb" id="kA">—</div></div>
+    <div class="kpi"><div class="kl">Line B</div><div class="kv" style="color:var(--orange)" id="kB">—</div></div>
+    <div class="kpi"><div class="kl">Line C</div><div class="kv" style="color:var(--purple)" id="kC">—</div></div>
+    <div class="kpi"><div class="kl">Energy kWh</div><div class="kv" id="kEn">—</div></div>
+    <div class="kpi"><div class="kl">Sim time</div><div class="kv cb" id="kTime">—</div></div>
+  </div>
+
+  <div id="tabbar">
+    <div class="tab on" onclick="showTab('overview',this)">📊 Overview</div>
+    <div class="tab" onclick="showTab('bottleneck',this)">🔴 Bottleneck</div>
+    <div class="tab" onclick="showTab('timeseries',this)">📈 Time Series</div>
+    <div class="tab" onclick="showTab('machines',this)">🏭 Machines</div>
+    <div class="tab" onclick="showTab('eventlog',this)">📋 Event Log</div>
+  </div>
+
+  <!-- OVERVIEW -->
+  <div id="tab-overview" class="tab-content on">
+    <div class="chart-grid-2" style="margin-bottom:12px">
+      <div class="chart-card"><div class="chart-title">Final output over time</div><div id="ch-output" style="height:220px"></div></div>
+      <div class="chart-card"><div class="chart-title">OEE % trend</div><div id="ch-oee" style="height:220px"></div></div>
+    </div>
+    <div class="chart-grid-3">
+      <div class="chart-card"><div class="chart-title">WIP queue depths</div><div id="ch-wip" style="height:200px"></div></div>
+      <div class="chart-card"><div class="chart-title">Cumulative energy (kWh)</div><div id="ch-energy" style="height:200px"></div></div>
+      <div class="chart-card"><div class="chart-title">Line balance (sub-assy output)</div><div id="ch-pie" style="height:200px"></div></div>
+    </div>
+  </div>
+
+  <!-- BOTTLENECK -->
+  <div id="tab-bottleneck" class="tab-content">
+    <div class="chart-grid-2" style="margin-bottom:12px">
+      <div class="chart-card"><div class="chart-title">Machine utilisation — bottleneck ranking</div><div id="ch-util" style="height:280px"></div></div>
+      <div class="chart-card"><div class="chart-title">Breakdown time vs run time (hours)</div><div id="ch-broken" style="height:280px"></div></div>
+    </div>
+    <div class="chart-grid-2">
+      <div class="chart-card"><div class="chart-title">Tool wear by machine</div><div id="ch-wear" style="height:240px"></div></div>
+      <div class="chart-card"><div class="chart-title">Utilisation heatmap (Line × Position)</div><div id="ch-heat" style="height:240px"></div></div>
+    </div>
+  </div>
+
+  <!-- TIME SERIES -->
+  <div id="tab-timeseries" class="tab-content">
+    <div class="chart-grid-2" style="margin-bottom:12px">
+      <div class="chart-card"><div class="chart-title">Final output</div><div id="ch-ts-final" style="height:200px"></div></div>
+      <div class="chart-card"><div class="chart-title">Total WIP in system</div><div id="ch-ts-wip" style="height:200px"></div></div>
+    </div>
+    <div class="chart-grid-2" style="margin-bottom:12px">
+      <div class="chart-card"><div class="chart-title">OEE %</div><div id="ch-ts-oee" style="height:200px"></div></div>
+      <div class="chart-card"><div class="chart-title">Cumulative energy</div><div id="ch-ts-en" style="height:200px"></div></div>
+    </div>
+    <div class="chart-card"><div class="chart-title">Queue depths — all stages</div><div id="ch-ts-q" style="height:220px"></div></div>
+    <div class="chart-card" style="margin-top:12px;display:none" id="mc-spread-card">
+      <div class="chart-title">Monte Carlo spread — final output (5–95th percentile)</div>
+      <div id="ch-mc" style="height:220px"></div>
+    </div>
+  </div>
+
+  <!-- MACHINES -->
+  <div id="tab-machines" class="tab-content">
+    <div class="tbl-wrap" style="margin-bottom:12px">
+      <table id="mach-table">
+        <thead><tr>
+          <th>Machine</th><th>Line</th><th>Description</th>
+          <th>Utilisation</th><th>Parts run</th><th>Broken (h)</th>
+          <th>Tool wear</th><th>Cycle (min)</th><th>Break %</th>
+        </tr></thead>
+        <tbody id="mach-tbody"></tbody>
+      </table>
+    </div>
+    <div class="chart-grid-2">
+      <div class="chart-card"><div class="chart-title">Parts produced per machine</div><div id="ch-parts" style="height:280px"></div></div>
+      <div class="chart-card"><div class="chart-title">Energy consumption per machine (kWh)</div><div id="ch-mach-en" style="height:280px"></div></div>
+    </div>
+  </div>
+
+  <!-- EVENT LOG -->
+  <div id="tab-eventlog" class="tab-content">
+    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap" id="ev-filters">
+      <span style="font-size:11px;color:var(--text2);align-self:center">Filter:</span>
+    </div>
+    <div id="evlog"><span class="ev ev-info">Run simulation to see events</span></div>
+    <div class="chart-card" style="margin-top:12px"><div class="chart-title">Event frequency</div><div id="ch-evfreq" style="height:200px"></div></div>
+  </div>
+
+</div><!-- #main -->
+</div><!-- #layout -->
+
+<script>
+'use strict';
+
+// ── helpers ──────────────────────────────────────────────────────
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const randExp=m=>-m*Math.log(Math.max(1-Math.random(),1e-9));
+const randNorm=(mu,sig)=>{ const u=1-Math.random()+1e-9,v=Math.random(); return mu+sig*Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); };
+
+// ── machine definitions ───────────────────────────────────────────
+const MDEFS=[
+  {id:0,name:'CNC-A1',line:'A',ct:8, br:6, rt:20,ew:6, desc:'Rough milling'},
+  {id:1,name:'CNC-A2',line:'A',ct:11,br:10,rt:28,ew:5, desc:'Finish turning'},
+  {id:2,name:'CNC-A3',line:'A',ct:7, br:5, rt:15,ew:7, desc:'Drilling'},
+  {id:3,name:'CNC-A4',line:'A',ct:15,br:9, rt:35,ew:4, desc:'Grinding'},
+  {id:4,name:'CNC-B1',line:'B',ct:9, br:7, rt:22,ew:6, desc:'Sheet forming'},
+  {id:5,name:'CNC-B2',line:'B',ct:6, br:4, rt:15,ew:8, desc:'Laser cut'},
+  {id:6,name:'CNC-B3',line:'B',ct:13,br:14,rt:40,ew:5, desc:'Welding'},
+  {id:7,name:'CNC-B4',line:'B',ct:8, br:6, rt:18,ew:6, desc:'Deburring'},
+  {id:8,name:'CNC-C1',line:'C',ct:10,br:8, rt:25,ew:7, desc:'Casting prep'},
+  {id:9,name:'CNC-C2',line:'C',ct:7, br:5, rt:12,ew:9, desc:'EDM'},
+  {id:10,name:'CNC-C3',line:'C',ct:16,br:11,rt:45,ew:4, desc:'Honing'},
+  {id:11,name:'CNC-C4',line:'C',ct:9, br:7, rt:20,ew:6, desc:'CMM inspect'},
+];
+const MP=MDEFS.map(d=>({...d}));
+
+function GP(){
+  return{
+    mA:+$('gmA').value,mB:+$('gmB').value,mC:+$('gmC').value,mF:+$('gmF').value,
+    travel:+$('gtrv').value,tvar:+$('gtvar').value,
+    batch:+$('gbatch').value,
+    sig:+$('gsig').value/100,
+    prim:+$('gprim').value/100,sec:+$('gsec').value/100,
+  };
+}
+
+// ── priority queue (min-heap) ─────────────────────────────────────
+class PQ{
+  constructor(){this.h=[]}
+  push(e){this.h.push(e);this._up(this.h.length-1)}
+  pop(){
+    if(!this.h.length)return null;
+    const t=this.h[0],l=this.h.pop();
+    if(this.h.length){this.h[0]=l;this._dn(0)}
+    return t;
+  }
+  peek(){return this.h[0]||null}
+  get size(){return this.h.length}
+  _up(i){while(i>0){const p=(i-1)>>1;if(this.h[p][0]<=this.h[i][0])break;[this.h[p],this.h[i]]=[this.h[i],this.h[p]];i=p}}
+  _dn(i){const n=this.h.length;while(1){let s=i,l=2*i+1,r=2*i+2;if(l<n&&this.h[l][0]<this.h[s][0])s=l;if(r<n&&this.h[r][0]<this.h[s][0])s=r;if(s===i)break;[this.h[s],this.h[i]]=[this.h[i],this.h[s]];i=s}}
+}
+
+// ── DES engine ────────────────────────────────────────────────────
+class DES{
+  constructor(mp,gp){this.mp=mp;this.gp=gp;this.reset()}
+  reset(){
+    this.pq=new PQ();this.now=0;this.pid=0;
+    this.finalOut=0;this.lineOut={A:0,B:0,C:0};
+    this.energy=0;this.batches=0;this.transit=new Set();
+    this.qA=this.qB=this.qC=this.qF=0;
+    this.busy={A:false,B:false,C:false,F:false};
+    this.evLog=[];
+    this.ts={t:[],final:[],wip:[],oee:[],en:[],qA:[],qB:[],qC:[],qF:[]};
+    this.machines=this.mp.map(d=>({
+      id:d.id,name:d.name,line:d.line,
+      state:'idle',ss:0,partsRun:0,runTime:0,brokenTime:0,toolWear:0,util:0
+    }));
+    for(const m of this.machines) this.pq.push([Math.random()*2,'START',m.id,null,null]);
+    this.pq.push([this.gp.batch*24*60,'BATCH',1,null,null]);
+  }
+  run(simMin,snapCount=150){
+    const target=this.now+simMin;
+    const si=simMin/snapCount;let ns=this.now+si;
+    while(this.pq.size&&this.pq.peek()[0]<=target){
+      const [t,et,a,b,c]=this.pq.pop();this.now=t;this._h(et,a,b,c);
+      if(this.now>=ns){this._snap();ns+=si;}
+    }
+    this._snap();
+  }
+  _h(et,a,b,c){
+    if(et==='START')this._start(a);
+    else if(et==='DONE')this._done(a,b);
+    else if(et==='ARV')this._arrive(b,c);
+    else if(et==='ADONE')this._adone(a);
+    else if(et==='ARVF')this._arvF();
+    else if(et==='FDONE')this._fdone();
+    else if(et==='REP')this._rep(a);
+    else if(et==='BATCH')this._batch(a);
+  }
+  _start(mid){
+    const m=this.machines[mid],p=this.mp[mid],gp=this.gp;
+    if(m.state==='broken')return;
+    if(Math.random()<p.br/100){
+      m.state='broken';m.ss=this.now;
+      const rt=Math.max(randExp(p.rt)+5,5);
+      this.pq.push([this.now+rt,'REP',mid,null,null]);
+      this._log('break',mid,`${p.name} breakdown — repair ${rt.toFixed(0)}min`);return;
+    }
+    const eff=Math.max(randNorm(1,gp.sig),0.4);
+    const ct=p.ct/eff;
+    m.state='running';m.ss=this.now;const pid=this.pid++;
+    this.pq.push([this.now+ct,'DONE',mid,pid,null]);
+    this.energy+=p.ew*(ct/60);
+    m.toolWear=Math.min(m.toolWear+(ct/60)*0.015,1);
+  }
+  _done(mid,pid){
+    const m=this.machines[mid],p=this.mp[mid],gp=this.gp;
+    m.partsRun++;m.runTime+=this.now-m.ss;m.state='idle';
+    this.transit.add(pid);
+    const tt=gp.travel+randExp(Math.max(gp.tvar,0.5));
+    this.pq.push([this.now+tt,'ARV',null,pid,m.line]);
+    this.pq.push([this.now+0.2,'START',mid,null,null]);
+  }
+  _arrive(pid,line){
+    this.transit.delete(pid);const gp=this.gp;
+    const merge={A:gp.mA,B:gp.mB,C:gp.mC}[line];
+    if(line==='A')this.qA++;else if(line==='B')this.qB++;else this.qC++;
+    const q={A:this.qA,B:this.qB,C:this.qC}[line];
+    if(!this.busy[line]&&q>=merge){
+      if(line==='A')this.qA-=merge;else if(line==='B')this.qB-=merge;else this.qC-=merge;
+      this.busy[line]=true;const at=Math.max(randNorm(18,4),6);
+      this.pq.push([this.now+at,'ADONE',line,null,null]);
+      this._log('assy',null,`Assembly ${line} started (${merge} parts)`);
+    }
+  }
+  _adone(line){
+    this.busy[line]=false;this.lineOut[line]++;const gp=this.gp;
+    const merge={A:gp.mA,B:gp.mB,C:gp.mC}[line];
+    const pid=this.pid++;this.transit.add(pid);
+    const tt=gp.travel+randExp(Math.max(gp.tvar,0.5));
+    this.pq.push([this.now+tt,'ARVF',null,null,null]);
+    const q={A:this.qA,B:this.qB,C:this.qC}[line];
+    if(q>=merge){
+      if(line==='A')this.qA-=merge;else if(line==='B')this.qB-=merge;else this.qC-=merge;
+      this.busy[line]=true;const at=Math.max(randNorm(18,4),6);
+      this.pq.push([this.now+at,'ADONE',line,null,null]);
+    }
+    this._log('assy',null,`✓ Sub-assy ${line} done (total ${this.lineOut[line]})`);
+  }
+  _arvF(){
+    this.qF++;const gp=this.gp;
+    if(!this.busy.F&&this.qF>=gp.mF){
+      this.qF-=gp.mF;this.busy.F=true;const ft=Math.max(randNorm(28,6),10);
+      this.pq.push([this.now+ft,'FDONE',null,null,null]);
+    }
+  }
+  _fdone(){
+    this.busy.F=false;this.finalOut++;const gp=this.gp;
+    const h=this.now/60;
+    if(this.finalOut%5===0) this._snap();
+    if(this.qF>=gp.mF){
+      this.qF-=gp.mF;this.busy.F=true;const ft=Math.max(randNorm(28,6),10);
+      this.pq.push([this.now+ft,'FDONE',null,null,null]);
+    }
+    this._log('final',null,`🏁 FINAL PRODUCT #${this.finalOut} complete!`);
+  }
+  _rep(mid){
+    const m=this.machines[mid];
+    m.brokenTime+=this.now-m.ss;m.state='idle';m.ss=this.now;
+    this.pq.push([this.now+0.3,'START',mid,null,null]);
+    this._log('repair',mid,`${this.mp[mid].name} repaired`);
+  }
+  _batch(n){
+    const flushed=this.qA+this.qB+this.qC;
+    this.qA=this.qB=this.qC=0;this.batches++;
+    this.pq.push([this.now+this.gp.batch*24*60,'BATCH',n+1,null,null]);
+    this._log('batch',null,`Batch #${n} cleanup — flushed ${flushed} WIP at ${(this.now/60).toFixed(0)}h`);
+  }
+  _log(type,mid,msg){
+    this.evLog.push({type,time:(this.now/60).toFixed(2),machine:mid!=null?this.mp[mid].name:'—',msg});
+    if(this.evLog.length>2000)this.evLog=this.evLog.slice(-1000);
+  }
+  _snap(){
+    const T=Math.max(this.now,1);
+    for(const m of this.machines)m.util=m.runTime/T;
+    const h=this.now/60;
+    const tb=this.machines.reduce((s,m)=>s+m.brokenTime,0);
+    const avail=Math.max((T*12-tb)/(T*12),0);
+    const gp=this.gp;
+    const oee=avail*0.91*gp.prim*gp.sec*100;
+    this.ts.t.push(+h.toFixed(2));this.ts.final.push(this.finalOut);
+    this.ts.wip.push(this.qA+this.qB+this.qC+this.qF+this.transit.size);
+    this.ts.oee.push(+oee.toFixed(1));this.ts.en.push(+this.energy.toFixed(1));
+    this.ts.qA.push(this.qA);this.ts.qB.push(this.qB);
+    this.ts.qC.push(this.qC);this.ts.qF.push(this.qF);
+  }
+  getKPIs(){
+    const T=Math.max(this.now,1);
+    for(const m of this.machines)m.util=m.runTime/T;
+    const sorted=[...this.machines].sort((a,b)=>b.util-a.util);
+    const simH=T/60;
+    const tb=this.machines.reduce((s,m)=>s+m.brokenTime,0);
+    const avail=Math.max((T*12-tb)/(T*12),0);
+    const gp=this.gp;
+    const oee=(avail*0.91*gp.prim*gp.sec*100).toFixed(1);
+    return{
+      finalOut:this.finalOut,lineOut:{...this.lineOut},
+      oee,simH:simH.toFixed(1),tph:(this.finalOut/simH).toFixed(2),
+      energy:this.energy.toFixed(0),batches:this.batches,
+      wip:this.qA+this.qB+this.qC+this.qF+this.transit.size,
+      machines:this.machines.map(m=>({
+        ...m,utilPct:(m.util*100).toFixed(1),
+        wearPct:(m.toolWear*100).toFixed(1),
+        brokenH:(m.brokenTime/60).toFixed(1),
+      })),
+      bn:sorted.map(m=>m.id),
+    };
+  }
+}
+
+// ── sidebar per-machine cards ─────────────────────────────────────
+const lineCols={A:'#dbeafe',B:'#ffedd5',C:'#ede9fe'};
+const lineTc  ={A:'#1e40af',B:'#9a3412',C:'#5b21b6'};
+function buildMachineCards(){
+  const el=$('mc-cards');el.innerHTML='';
+  MP.forEach((p,i)=>{
+    const det=document.createElement('details');det.className='mc-exp';
+    const sum=document.createElement('summary');
+    sum.innerHTML=`<span>${p.name} <span style="background:${lineCols[p.line]};color:${lineTc[p.line]};padding:1px 5px;border-radius:8px;font-size:9px">${p.line}</span></span>`;
+    det.appendChild(sum);
+    const inner=document.createElement('div');inner.className='mc-inner';
+    const rows=[
+      ['ct','Cycle (min)',2,45,p.ct,''],
+      ['br','Breakdown %',0,35,p.br,'%'],
+      ['rt','Repair (min)',5,120,p.rt,''],
+      ['ew','Energy (kW)',1,25,p.ew,''],
+    ];
+    rows.forEach(([pfx,lbl,mn,mx,val,suf])=>{
+      const d=document.createElement('div');d.className='pr';
+      d.innerHTML=`<label>${lbl}</label><input type="range" id="${pfx}${i}" min="${mn}" max="${mx}" value="${val}" step="1"><span class="pv" id="${pfx}v${i}">${val}${suf}</span>`;
+      inner.appendChild(d);
+      setTimeout(()=>{
+        const inp=d.querySelector('input');
+        const sp=d.querySelector('.pv');
+        inp.addEventListener('input',function(){
+          const map={ct:'ct',br:'br',rt:'rt',ew:'ew'};
+          MP[i][map[pfx]]=+this.value;
+          sp.textContent=this.value+suf;
+        });
+      },0);
+    });
+    det.appendChild(inner);el.appendChild(det);
+  });
+}
+buildMachineCards();
+
+// global param listeners
+[['gmA','gvmA',''],['gmB','gvmB',''],['gmC','gvmC',''],['gmF','gvmF',''],
+ ['gtrv','gvtrv',''],['gtvar','gvtvar',''],['gbatch','gvbatch',''],
+ ['gsig','gvsig',''],['gprim','gvprim','%'],['gsec','gvsec','%']
+].forEach(([id,vid,suf])=>{
+  $(id).addEventListener('input',function(){$(vid).textContent=this.value+suf});
+});
+$('mc-sl').addEventListener('input',function(){$('mc-val').textContent=this.value+'×'});
+$('days-sl').addEventListener('input',function(){$('days-val').textContent=this.value+'d'});
+
+// ── tab switching ─────────────────────────────────────────────────
+function showTab(name,el){
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  $('tab-'+name).classList.add('on');
+  el.classList.add('on');
+}
+
+// ── plotly config ─────────────────────────────────────────────────
+const PLC={displayModeBar:false,responsive:true};
+const PLLayout=(extra={})=>Object.assign({
+  margin:{l:42,r:16,t:16,b:38},
+  plot_bgcolor:'#fff',paper_bgcolor:'#fff',
+  font:{size:11,family:'system-ui'},
+  xaxis:{showgrid:true,gridcolor:'#f0f0f0',zeroline:false},
+  yaxis:{showgrid:true,gridcolor:'#f0f0f0',zeroline:false},
+  showlegend:false,
+},extra);
+
+// ── run simulation ────────────────────────────────────────────────
+let lastKPI=null,lastRuns=[];
+
+async function runSim(){
+  const nRuns=+$('mc-sl').value;
+  const days=+$('days-sl').value;
+  const simMin=days*24*60;
+  const gp=GP();
+
+  $('progress-wrap').style.display='flex';
+  $('run-btn').disabled=true;
+
+  lastRuns=[];
+  for(let r=0;r<nRuns;r++){
+    await new Promise(res=>setTimeout(res,0));
+    const eng=new DES(MP.map(d=>({...d})),gp);
+    eng.run(simMin,120);
+    lastRuns.push(eng);
+    const pct=Math.round((r+1)/nRuns*100);
+    $('prog-fill').style.width=pct+'%';
+    $('prog-pct').textContent=pct+'%';
+    $('prog-txt').textContent=`Run ${r+1}/${nRuns}…`;
+  }
+
+  $('progress-wrap').style.display='none';
+  $('run-btn').disabled=false;
+
+  renderAll();
+}
+
+function avgSeries(runs,key){
+  const minL=Math.min(...runs.map(r=>r.ts[key].length));
+  const out=[];
+  for(let i=0;i<minL;i++) out.push(runs.reduce((s,r)=>s+r.ts[key][i],0)/runs.length);
+  return out;
+}
+
+function renderAll(){
+  const runs=lastRuns;
+  if(!runs.length)return;
+  const first=runs[0];
+  const ts=first.ts.t.slice(0,Math.min(...runs.map(r=>r.ts.t.length)));
+  const fin=avgSeries(runs,'final');
+  const wip=avgSeries(runs,'wip');
+  const oee=avgSeries(runs,'oee');
+  const en=avgSeries(runs,'en');
+  const qA=avgSeries(runs,'qA');
+  const qB=avgSeries(runs,'qB');
+  const qC=avgSeries(runs,'qC');
+  const qF=avgSeries(runs,'qF');
+
+  // Average KPI from last run
+  const kpi=first.getKPIs();
+  lastKPI=kpi;
+
+  // KPI cards
+  $('kFinal').textContent=kpi.finalOut;
+  const oN=+kpi.oee;
+  $('kOee').textContent=kpi.oee+'%';
+  $('kOee').className='kv '+(oN>=75?'cg':oN>=55?'ca':'cr');
+  $('kTph').textContent=kpi.tph;
+  $('kA').textContent=kpi.lineOut.A;
+  $('kB').textContent=kpi.lineOut.B;
+  $('kC').textContent=kpi.lineOut.C;
+  $('kEn').textContent=(+kpi.energy).toLocaleString();
+  $('kTime').textContent=kpi.simH+'h';
+
+  // OVERVIEW charts
+  const mcTraces=runs.length>1?runs.map((r,i)=>({
+    x:r.ts.t.slice(0,ts.length),y:r.ts.final.slice(0,ts.length),
+    mode:'lines',opacity:0.15,line:{color:'#2563EB',width:1},showlegend:false,
+  })):[];
+
+  Plotly.react('ch-output',[
+    ...mcTraces,
+    {x:ts,y:fin,mode:'lines',line:{color:'#16a34a',width:2.5},name:'Avg output'}
+  ],PLLayout({xaxis:{title:'Sim hours'},yaxis:{title:'Units'}}),PLC);
+
+  Plotly.react('ch-oee',[
+    {x:ts,y:oee,mode:'lines',fill:'tozeroy',
+     line:{color:'#0F6E56',width:2},fillcolor:'rgba(15,110,86,0.1)'},
+    {x:[ts[0],ts[ts.length-1]],y:[75,75],mode:'lines',
+     line:{color:'#dc2626',width:1,dash:'dash'},showlegend:false}
+  ],PLLayout({yaxis:{range:[0,100],title:'OEE %'}}),PLC);
+
+  Plotly.react('ch-wip',[
+    {x:ts,y:qA,mode:'lines',name:'Queue A',line:{color:'#2563EB'}},
+    {x:ts,y:qB,mode:'lines',name:'Queue B',line:{color:'#C2410C'}},
+    {x:ts,y:qC,mode:'lines',name:'Queue C',line:{color:'#7C3AED'}},
+    {x:ts,y:qF,mode:'lines',name:'Final Q',line:{color:'#16a34a',dash:'dot'}},
+  ],PLLayout({showlegend:true,legend:{orientation:'h',y:-0.35},xaxis:{title:'h'},yaxis:{title:'parts'}}),PLC);
+
+  Plotly.react('ch-energy',[
+    {x:ts,y:en,mode:'lines',fill:'tozeroy',
+     line:{color:'#d97706',width:2},fillcolor:'rgba(217,119,6,0.1)'}
+  ],PLLayout({xaxis:{title:'Sim hours'},yaxis:{title:'kWh'}}),PLC);
+
+  Plotly.react('ch-pie',[{
+    type:'pie',labels:['Line A','Line B','Line C'],
+    values:[kpi.lineOut.A,kpi.lineOut.B,kpi.lineOut.C],
+    hole:0.42,
+    marker:{colors:['#2563EB','#C2410C','#7C3AED']},
+    textinfo:'label+percent',
+  }],{margin:{l:10,r:10,t:10,b:30},paper_bgcolor:'#fff',font:{size:11}},PLC);
+
+  // BOTTLENECK charts
+  const ms=kpi.machines;
+  const mNames=ms.map(m=>m.name);
+  const utils=ms.map(m=>+m.utilPct);
+  const utilColors=utils.map(u=>u>80?'#dc2626':u>65?'#f59e0b':'#16a34a');
+
+  Plotly.react('ch-util',[{
+    type:'bar',x:mNames,y:utils,
+    marker:{color:utilColors},
+    text:utils.map(u=>u+'%'),textposition:'outside',
+  },{
+    x:[mNames[0],mNames[mNames.length-1]],y:[80,80],
+    mode:'lines',line:{color:'#dc2626',dash:'dash',width:1},showlegend:false
+  },{
+    x:[mNames[0],mNames[mNames.length-1]],y:[65,65],
+    mode:'lines',line:{color:'#f59e0b',dash:'dot',width:1},showlegend:false
+  }],PLLayout({
+    yaxis:{range:[0,115],title:'Utilisation %'},
+    xaxis:{tickangle:-30},
+  }),PLC);
+
+  const runH=ms.map(m=>+(m.partsRun*MP[m.id].ct/60).toFixed(1));
+  const brkH=ms.map(m=>+m.brokenH);
+  Plotly.react('ch-broken',[
+    {type:'bar',name:'Run time',x:mNames,y:runH,marker:{color:'#2563EB'}},
+    {type:'bar',name:'Broken time',x:mNames,y:brkH,marker:{color:'#dc2626'}},
+  ],PLLayout({barmode:'stack',showlegend:true,legend:{orientation:'h',y:-0.35},
+    xaxis:{tickangle:-30},yaxis:{title:'Hours'}}),PLC);
+
+  const wears=ms.map(m=>+m.wearPct);
+  const wearColors=wears.map(w=>w>70?'#dc2626':w>40?'#f59e0b':'#16a34a');
+  Plotly.react('ch-wear',[{
+    type:'bar',x:mNames,y:wears,
+    marker:{color:wearColors},
+    text:wears.map(w=>w+'%'),textposition:'outside',
+  }],PLLayout({yaxis:{range:[0,120],title:'Wear %'},xaxis:{tickangle:-30}}),PLC);
+
+  // Heatmap
+  const lineOrder=['A','B','C'];
+  const zHeat=lineOrder.map(l=>ms.filter(m=>m.line===l).map(m=>+m.utilPct));
+  Plotly.react('ch-heat',[{
+    type:'heatmap',
+    z:zHeat,
+    x:['M1','M2','M3','M4'],
+    y:['Line A','Line B','Line C'],
+    colorscale:'RdYlGn',reversescale:true,
+    zmin:0,zmax:100,
+    text:zHeat.map(row=>row.map(v=>v+'%')),
+    texttemplate:'%{text}',
+    colorbar:{title:'Util %',len:0.9},
+  }],{margin:{l:60,r:60,t:20,b:40},paper_bgcolor:'#fff',font:{size:11}},PLC);
+
+  // TIME SERIES
+  Plotly.react('ch-ts-final',[{x:ts,y:fin,mode:'lines',line:{color:'#16a34a',width:2}}],
+    PLLayout({xaxis:{title:'h'},yaxis:{title:'Units'}}),PLC);
+  Plotly.react('ch-ts-wip',[{x:ts,y:wip,mode:'lines',line:{color:'#d97706',width:2},fill:'tozeroy',fillcolor:'rgba(217,119,6,0.08)'}],
+    PLLayout({xaxis:{title:'h'},yaxis:{title:'WIP parts'}}),PLC);
+  Plotly.react('ch-ts-oee',[{x:ts,y:oee,mode:'lines',line:{color:'#0F6E56',width:2},fill:'tozeroy',fillcolor:'rgba(15,110,86,0.08)'}],
+    PLLayout({yaxis:{range:[0,100],title:'OEE %'},xaxis:{title:'h'}}),PLC);
+  Plotly.react('ch-ts-en',[{x:ts,y:en,mode:'lines',line:{color:'#C2410C',width:2},fill:'tozeroy',fillcolor:'rgba(194,65,12,0.08)'}],
+    PLLayout({xaxis:{title:'h'},yaxis:{title:'kWh'}}),PLC);
+  Plotly.react('ch-ts-q',[
+    {x:ts,y:qA,mode:'lines',name:'A',line:{color:'#2563EB',width:2}},
+    {x:ts,y:qB,mode:'lines',name:'B',line:{color:'#C2410C',width:2}},
+    {x:ts,y:qC,mode:'lines',name:'C',line:{color:'#7C3AED',width:2}},
+    {x:ts,y:qF,mode:'lines',name:'Final',line:{color:'#16a34a',width:2,dash:'dot'}},
+  ],PLLayout({showlegend:true,legend:{orientation:'h',y:-0.35},
+    xaxis:{title:'Sim hours'},yaxis:{title:'Queued parts'}}),PLC);
+
+  if(runs.length>1){
+    $('mc-spread-card').style.display='block';
+    const minL=Math.min(...runs.map(r=>r.ts.final.length));
+    const tmc=runs[0].ts.t.slice(0,minL);
+    const arr=runs.map(r=>r.ts.final.slice(0,minL));
+    const p5=tmc.map((_,i)=>{const v=arr.map(r=>r[i]).sort((a,b)=>a-b);return v[Math.floor(v.length*0.05)]});
+    const p95=tmc.map((_,i)=>{const v=arr.map(r=>r[i]).sort((a,b)=>a-b);return v[Math.floor(v.length*0.95)]});
+    const mn=tmc.map((_,i)=>arr.reduce((s,r)=>s+r[i],0)/arr.length);
+    Plotly.react('ch-mc',[
+      {x:tmc,y:p95,mode:'lines',line:{color:'rgba(37,99,235,0)'},showlegend:false},
+      {x:tmc,y:p5,mode:'lines',fill:'tonexty',fillcolor:'rgba(37,99,235,0.12)',
+       line:{color:'rgba(37,99,235,0)'},name:'5–95th pct'},
+      {x:tmc,y:mn,mode:'lines',line:{color:'#2563EB',width:2.5},name:'Mean'},
+    ],PLLayout({showlegend:true,xaxis:{title:'Sim hours'},yaxis:{title:'Final output'}}),PLC);
+  }
+
+  // MACHINES table
+  const tbody=$('mach-tbody');tbody.innerHTML='';
+  [...ms].sort((a,b)=>+b.utilPct-+a.utilPct).forEach(m=>{
+    const u=+m.utilPct;
+    const barW=Math.round(u*0.8);
+    const barC=u>80?'#dc2626':u>65?'#f59e0b':'#16a34a';
+    const wearW=Math.round(+m.wearPct*0.6);
+    const wearC=+m.wearPct>70?'#dc2626':+m.wearPct>40?'#f59e0b':'#16a34a';
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td style="font-weight:600">${m.name}</td>
+      <td><span class="tag tag-${m.line}">Line ${m.line}</span></td>
+      <td style="color:var(--text2)">${MP[m.id].desc}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="width:80px;height:6px;background:#e9ecef;border-radius:3px;overflow:hidden">
+            <div style="width:${barW}px;height:100%;background:${barC};border-radius:3px"></div>
+          </div>
+          <span style="font-weight:600;color:${barC}">${u}%</span>
+        </div>
+      </td>
+      <td>${m.partsRun.toLocaleString()}</td>
+      <td>${m.brokenH}h</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="width:60px;height:5px;background:#e9ecef;border-radius:3px;overflow:hidden">
+            <div style="width:${wearW}px;height:100%;background:${wearC};border-radius:3px"></div>
+          </div>
+          <span style="font-weight:600;color:${wearC}">${m.wearPct}%</span>
+        </div>
+      </td>
+      <td>${MP[m.id].ct}</td>
+      <td>${MP[m.id].br}%</td>`;
+    tbody.appendChild(tr);
+  });
+
+  // parts bar chart
+  const sortedM=[...ms].sort((a,b)=>a.partsRun-b.partsRun);
+  Plotly.react('ch-parts',[{
+    type:'bar',orientation:'h',
+    x:sortedM.map(m=>m.partsRun),
+    y:sortedM.map(m=>m.name),
+    marker:{color:sortedM.map(m=>({A:'#2563EB',B:'#C2410C',C:'#7C3AED'})[m.line])},
+    text:sortedM.map(m=>m.partsRun.toLocaleString()),textposition:'outside',
+  }],PLLayout({margin:{l:70,r:40,t:16,b:38},xaxis:{title:'Parts'}}),PLC);
+
+  const enByMachine=ms.map(m=>(MP[m.id].ct/60*m.partsRun*MP[m.id].ew).toFixed(0));
+  const enColors=ms.map(m=>({A:'#2563EB',B:'#C2410C',C:'#7C3AED'})[m.line]);
+  Plotly.react('ch-mach-en',[{
+    type:'bar',x:ms.map(m=>m.name),y:enByMachine.map(Number),
+    marker:{color:enColors},text:enByMachine,textposition:'outside',
+  }],PLLayout({xaxis:{tickangle:-30},yaxis:{title:'kWh'}}),PLC);
+
+  // EVENT LOG
+  const allLogs=runs.flatMap(r=>r.evLog).sort((a,b)=>+a.time-+b.time);
+  const evTypes=[...new Set(allLogs.map(e=>e.type))];
+  const filterDiv=$('ev-filters');
+  const existingCbs=new Set([...filterDiv.querySelectorAll('input')].map(i=>i.dataset.type));
+  evTypes.forEach(t=>{
+    if(existingCbs.has(t))return;
+    const lbl=document.createElement('label');
+    lbl.style.cssText='display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer';
+    lbl.innerHTML=`<input type="checkbox" data-type="${t}" checked style="cursor:pointer"> ${t}`;
+    lbl.querySelector('input').addEventListener('change',()=>renderLog(allLogs));
+    filterDiv.appendChild(lbl);
+  });
+  renderLog(allLogs);
+
+  const evCounts=evTypes.map(t=>({type:t,count:allLogs.filter(e=>e.type===t).length}));
+  const evColors={final:'#4ade80',break:'#f87171',repair:'#34d399',batch:'#fbbf24',assy:'#93c5fd'};
+  Plotly.react('ch-evfreq',[{
+    type:'bar',
+    x:evCounts.map(e=>e.type),
+    y:evCounts.map(e=>e.count),
+    marker:{color:evCounts.map(e=>evColors[e.type]||'#9ca3af')},
+    text:evCounts.map(e=>e.count),textposition:'outside',
+  }],PLLayout({yaxis:{title:'Count'}}),PLC);
+}
+
+function renderLog(allLogs){
+  const checkedTypes=new Set([...$('ev-filters').querySelectorAll('input:checked')].map(i=>i.dataset.type));
+  const filtered=allLogs.filter(e=>checkedTypes.has(e.type)).slice(-200).reverse();
+  const evClasses={final:'ev-final',break:'ev-break',repair:'ev-repair',batch:'ev-batch',assy:'ev-assy'};
+  const el=$('evlog');
+  el.innerHTML=filtered.map(e=>`<div class="ev ${evClasses[e.type]||'ev-info'}">[${(+e.time).toFixed(1)}h] ${e.machine!=='—'?`<b>${e.machine}</b> `:''}${e.msg}</div>`).join('');
+}
+
+$('run-btn').addEventListener('click',runSim);
+$('reset-btn').addEventListener('click',()=>{
+  lastRuns=[];lastKPI=null;
+  ['kFinal','kOee','kTph','kA','kB','kC','kEn','kTime'].forEach(id=>$(id).textContent='—');
+  $('mach-tbody').innerHTML='';$('evlog').innerHTML='<span class="ev ev-info">Run simulation to see events</span>';
+  ['ch-output','ch-oee','ch-wip','ch-energy','ch-pie','ch-util','ch-broken','ch-wear',
+   'ch-heat','ch-ts-final','ch-ts-wip','ch-ts-oee','ch-ts-en','ch-ts-q','ch-mc',
+   'ch-parts','ch-mach-en','ch-evfreq'].forEach(id=>Plotly.purge(id));
+});
+
+// Initial placeholder hint
+setTimeout(()=>{
+  const hint=`<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:13px">Press ▶ Run to simulate</div>`;
+  ['ch-output','ch-oee','ch-wip','ch-energy'].forEach(id=>{ if($('ch-output')) $('ch-output').innerHTML=''; });
+},100);
+</script>
+</body>
+</html>

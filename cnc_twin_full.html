@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CNC Digital Twin — Full Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2.27.0/plotly.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f5f3ee;--bg2:#fff;--bg3:#eceae3;--bd:#d8d5cc;
+  --text:#1a1a18;--t2:#5a5a54;--t3:#9a9990;
+  --blue:#185FA5;--bl:#E6F1FB;--bd2:#0C447C;
+  --green:#0F6E56;--gl:#E1F5EE;--gd:#085041;
+  --orange:#993C1D;--ol:#FAECE7;
+  --amber:#BA7517;--al:#FAEEDA;
+  --red:#A32D2D;--rl:#FCEBEB;
+  --purple:#534AB7;--pl:#EEEDFE;
+  --r:8px;--rl2:12px;
+}
+
+/* time bar */
+#timebar{position:absolute;bottom:0;left:0;right:0;z-index:15;height:38px;background:rgba(20,20,18,0.82);z-index:10;display:flex;align-items:center;gap:0;backdrop-filter:blur(4px);pointer-events:none}
+#tb-clock{padding:0 14px;border-right:1px solid rgba(255,255,255,0.12);flex-shrink:0}
+#tb-day{font-size:13px;font-weight:600;color:#fff;line-height:1.1}
+#tb-hm{font-size:10px;color:#9ca3af;margin-top:1px}
+#tb-shift{padding:0 12px;border-right:1px solid rgba(255,255,255,0.12);flex-shrink:0}
+#tb-shift-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px}
+#tb-progress{flex:1;padding:0 14px}
+#tb-bar-label{font-size:9px;color:#9ca3af;margin-bottom:3px;display:flex;justify-content:space-between}
+#tb-bar-track{height:5px;background:rgba(255,255,255,0.12);border-radius:3px;overflow:hidden;position:relative}
+#tb-bar-fill{height:100%;border-radius:3px;transition:width .4s;background:#4ade80}
+#tb-bar-batch{position:absolute;top:0;height:100%;width:2px;background:#fbbf24;border-radius:1px}
+#tb-stats{padding:0 14px;border-left:1px solid rgba(255,255,255,0.12);flex-shrink:0;display:flex;gap:16px}
+.tb-stat{text-align:center}
+.tb-stat-v{font-size:12px;font-weight:600;color:#fff}
+.tb-stat-l{font-size:9px;color:#9ca3af}
+
+html,body{height:100%;overflow:hidden;background:var(--bg);font-family:system-ui,sans-serif;font-size:12px;color:var(--text)}
+#app{display:grid;grid-template-rows:44px 1fr;height:100vh}
+
+/* toolbar */
+#tb{display:flex;align-items:center;gap:7px;padding:0 12px;background:var(--bg2);border-bottom:1px solid var(--bd);z-index:20;flex-shrink:0}
+#tb h1{font-size:13px;font-weight:600;white-space:nowrap}
+.badge{padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;background:var(--bl);color:var(--bd2)}
+.sp{flex:1}
+.btn{padding:4px 11px;border:1px solid var(--bd);border-radius:6px;background:var(--bg2);cursor:pointer;font-size:11px;font-family:inherit;color:var(--text);white-space:nowrap}
+.btn:hover{background:var(--bg3)}
+.btn.go{background:var(--green);color:#fff;border-color:var(--gd)}
+.btn.go:hover{background:var(--gd)}
+.btn.toggled{background:var(--bl);color:var(--blue);border-color:var(--blue)}
+#spv{font-size:11px;font-weight:600;min-width:34px;color:var(--blue)}
+
+/* workspace */
+#ws{display:grid;grid-template-columns:1fr 360px;overflow:hidden}
+
+/* left pane */
+#left{position:relative;overflow:hidden}
+#three-wrap{position:absolute;inset:0}
+#cv{display:block;width:100%!important;height:100%!important}
+#ll{position:absolute;inset:0;pointer-events:none;z-index:3}
+.nlbl{position:absolute;transform:translateX(-50%);padding:2px 6px;border-radius:4px;font-size:9px;font-weight:600;white-space:nowrap;pointer-events:none;letter-spacing:.02em}
+
+/* analytics panel — overlays left pane */
+#analytics{position:absolute;inset:0;overflow-y:auto;padding:12px;background:var(--bg);display:none;z-index:5}
+.ag2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.ag3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px}
+.ag4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.acard{background:var(--bg2);border:0.5px solid var(--bd);border-radius:var(--rl2);padding:10px 12px}
+.acard-title{font-size:11px;font-weight:600;margin-bottom:6px;color:var(--text)}
+
+/* right sidebar */
+#sb{background:var(--bg2);border-left:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden}
+#tabbar{display:flex;border-bottom:1px solid var(--bd);flex-shrink:0}
+.stab{flex:1;padding:7px 2px;text-align:center;font-size:10px;cursor:pointer;color:var(--t2);border-bottom:2px solid transparent}
+.stab.on{color:var(--text);border-bottom-color:var(--blue);font-weight:600}
+#tbody{flex:1;overflow-y:auto;padding:10px}
+
+/* log bar */
+#logbar{height:56px;border-top:1px solid var(--bd);overflow-y:auto;padding:4px 10px;background:#141412;font-family:monospace;font-size:9.5px;flex-shrink:0;color:#6b7280}
+.lf{color:#4ade80}.lb{color:#f87171}.lr{color:#34d399}.lba{color:#fbbf24}.la{color:#93c5fd}
+
+/* kpi */
+.sec{font-size:9px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin:10px 0 5px}
+.sec:first-child{margin-top:0}
+.kg{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:7px}
+.kpi{background:var(--bg3);border-radius:var(--r);padding:6px 8px}
+.kl{font-size:9px;color:var(--t2);margin-bottom:1px}
+.kv{font-size:17px;font-weight:600;line-height:1.1}
+.ks{font-size:8px;color:var(--t3)}
+.cg{color:var(--green)}.ca{color:var(--amber)}.cr{color:var(--red)}.cb{color:var(--blue)}
+
+/* bottleneck bars */
+.bnr{display:flex;align-items:center;gap:4px;margin-bottom:3px}
+.bnn{width:52px;font-size:10px;font-weight:600;flex-shrink:0}
+.bnt{flex:1;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.bnf{height:100%;border-radius:3px;transition:width .4s}
+.bnv{width:28px;text-align:right;font-size:9px;font-weight:600;flex-shrink:0}
+
+/* machine cards */
+.mc{border:1px solid var(--bd);border-radius:var(--r);padding:6px 8px;margin-bottom:4px;cursor:pointer;transition:border-color .15s,background .15s}
+.mc:hover{border-color:var(--blue)}
+.mc.sel{border-color:var(--blue);background:var(--bl)}
+.mc.b1{border-color:var(--red);background:var(--rl)}
+.mc.b2{border-color:var(--amber);background:var(--al)}
+.mch{display:flex;align-items:center;gap:4px;margin-bottom:4px}
+.mcd{width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:background .3s}
+.mcd.running{background:#22c55e}.mcd.idle{background:#9ca3af}.mcd.broken{background:#ef4444}
+.mcn{font-weight:600;font-size:11px;flex:1}
+.mcbadge{font-size:8px;padding:1px 5px;border-radius:8px;font-weight:600}
+.mcu{font-size:9px;font-weight:600;color:var(--t2)}
+.pr{display:flex;align-items:center;gap:4px;margin-bottom:2px}
+.pr label{font-size:9px;color:var(--t2);width:65px;flex-shrink:0}
+.pr input[type=range]{flex:1;height:3px;accent-color:var(--blue);cursor:pointer}
+.pr .pv{font-size:9px;font-weight:600;width:28px;text-align:right;flex-shrink:0}
+.wt{flex:1;height:3px;background:var(--bd);border-radius:2px;overflow:hidden}
+.wf{height:100%;border-radius:2px;transition:width .5s}
+
+/* flow */
+.fr{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bg3);font-size:10px}
+.fr:last-child{border:none}
+.fk{color:var(--t2)}.fv{font-weight:600}
+
+/* selected machine detail panel */
+#mdetail{background:var(--bg3);border-radius:var(--r);padding:8px 10px;margin-top:6px;display:none}
+#mdetail-title{font-size:11px;font-weight:600;margin-bottom:6px}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- TOOLBAR -->
+<div id="tb">
+  <h1>🏭 CNC Digital Twin</h1>
+  <span class="badge">⬤ Simulation</span>
+  <div class="sp"></div>
+  <label style="font-size:10px;color:var(--t2)">Speed</label>
+  <input type="range" id="spsl" min="1" max="800" value="80" style="width:75px;accent-color:var(--blue)">
+  <span id="spv">80×</span>
+  <button class="btn" id="view-toggle" onclick="toggleView()">📊 Analytics</button>
+  <button class="btn" id="view-btn" onclick="cycleCamera()">⟳ View</button>
+  <button class="btn go" id="runbtn">▶ Run</button>
+  <button class="btn" id="rstbtn">↺ Reset</button>
+</div>
+
+<!-- WORKSPACE -->
+<div id="ws">
+
+  <!-- LEFT: 3D + Analytics overlay -->
+  <div id="left">
+
+    <!-- Three.js scene -->
+    <div id="three-wrap">
+      <canvas id="cv"></canvas>
+      <div id="ll"></div>
+
+
+
+    </div>
+
+    <!-- Analytics overlay -->
+    <div id="analytics">
+      <!-- KPI row -->
+      <div class="ag4" id="an-kpi-row"></div>
+      <!-- Main charts row -->
+      <div class="ag2">
+        <div class="acard"><div class="acard-title">Final output trend</div><div id="an-output" style="height:180px"></div></div>
+        <div class="acard"><div class="acard-title">OEE % over time</div><div id="an-oee" style="height:180px"></div></div>
+      </div>
+      <div class="ag3">
+        <div class="acard"><div class="acard-title">Queue depths</div><div id="an-queues" style="height:160px"></div></div>
+        <div class="acard"><div class="acard-title">Utilisation — bottleneck ranking</div><div id="an-util" style="height:160px"></div></div>
+        <div class="acard"><div class="acard-title">Line balance</div><div id="an-pie" style="height:160px"></div></div>
+      </div>
+      <div class="ag2">
+        <div class="acard"><div class="acard-title">Cumulative energy (kWh)</div><div id="an-energy" style="height:150px"></div></div>
+        <div class="acard"><div class="acard-title">Tool wear by machine</div><div id="an-wear" style="height:150px"></div></div>
+      </div>
+    </div>
+  </div>
+
+
+      <!-- Time bar overlay -->
+      <div id="timebar">
+        <div id="tb-clock">
+          <div id="tb-day">Day 1</div>
+          <div id="tb-hm">00:00 — Shift 1</div>
+        </div>
+        <div id="tb-shift">
+          <span id="tb-shift-badge" style="background:#E1F5EE;color:#085041">Morning</span>
+        </div>
+        <div id="tb-progress">
+          <div id="tb-bar-label"><span id="tb-bar-l">Simulation progress</span><span id="tb-bar-r">0%</span></div>
+          <div id="tb-bar-track">
+            <div id="tb-bar-fill" style="width:0%"></div>
+            <div id="tb-bar-batch" style="left:50%"></div>
+          </div>
+        </div>
+        <div id="tb-stats">
+          <div class="tb-stat"><div class="tb-stat-v" id="tb-parts">0</div><div class="tb-stat-l">parts/h</div></div>
+          <div class="tb-stat"><div class="tb-stat-v" id="tb-wip">0</div><div class="tb-stat-l">WIP</div></div>
+          <div class="tb-stat"><div class="tb-stat-v" id="tb-oee2">—</div><div class="tb-stat-l">OEE</div></div>
+          <div class="tb-stat"><div class="tb-stat-v" id="tb-eta">—</div><div class="tb-stat-l">next batch</div></div>
+        </div>
+      </div>
+
+  <!-- RIGHT SIDEBAR -->
+  <div id="sb">
+    <div id="tabbar">
+      <div class="stab on" onclick="setTab('kpi',this)">KPIs</div>
+      <div class="stab" onclick="setTab('mach',this)">Machines</div>
+      <div class="stab" onclick="setTab('flow',this)">Flow</div>
+      <div class="stab" onclick="setTab('params',this)">Params</div>
+    </div>
+    <div id="tbody">
+
+      <!-- KPI TAB -->
+      <div id="t-kpi">
+        <div class="sec">Production</div>
+        <div class="kg">
+          <div class="kpi"><div class="kl">Final output</div><div class="kv cg" id="kFinal">0</div><div class="ks">units</div></div>
+          <div class="kpi"><div class="kl">System OEE</div><div class="kv" id="kOee">0%</div></div>
+          <div class="kpi"><div class="kl">Line A</div><div class="kv cb" id="kA">0</div></div>
+          <div class="kpi"><div class="kl">Line B</div><div class="kv" style="color:var(--orange)" id="kB">0</div></div>
+          <div class="kpi"><div class="kl">Line C</div><div class="kv" style="color:var(--purple)" id="kC">0</div></div>
+          <div class="kpi"><div class="kl">Throughput/h</div><div class="kv" id="kTph">0</div></div>
+          <div class="kpi"><div class="kl">WIP total</div><div class="kv ca" id="kWip">0</div></div>
+          <div class="kpi"><div class="kl">Energy kWh</div><div class="kv" id="kEn">0</div></div>
+        </div>
+        <div class="kg">
+          <div class="kpi"><div class="kl">Sim time</div><div class="kv cb" id="kTime">0h</div></div>
+          <div class="kpi"><div class="kl">Batches</div><div class="kv" id="kBatch">0</div></div>
+        </div>
+        <div class="sec">Bottleneck ranking</div>
+        <div id="bnbars"></div>
+        <div class="sec">Trend</div>
+        <canvas id="trendC" height="55" style="width:100%;border-radius:6px;background:var(--bg3)"></canvas>
+      </div>
+
+      <!-- MACHINES TAB -->
+      <div id="t-mach" style="display:none">
+        <div class="sec">Click machine to select · adjust sliders live</div>
+        <div id="mclist"></div>
+        <div id="mdetail">
+          <div id="mdetail-title"></div>
+          <canvas id="mdetail-chart" height="90" style="width:100%;border-radius:5px;background:var(--bg3)"></canvas>
+        </div>
+      </div>
+
+      <!-- FLOW TAB -->
+      <div id="t-flow" style="display:none">
+        <div class="sec">Stage throughput rates</div>
+        <div id="frates"></div>
+        <div class="sec" style="margin-top:8px">Queue depths</div>
+        <div id="fqueues"></div>
+        <div class="sec" style="margin-top:8px">Queue history</div>
+        <canvas id="qhistC" height="70" style="width:100%;border-radius:6px;background:var(--bg3)"></canvas>
+      </div>
+
+      <!-- PARAMS TAB -->
+      <div id="t-params" style="display:none">
+        <div class="sec">Assembly gates</div>
+        <div class="pr"><label>Line A merge</label><input type="range" id="gmA" min="1" max="8" value="4" step="1"><span class="pv" id="gvmA">4</span></div>
+        <div class="pr"><label>Line B merge</label><input type="range" id="gmB" min="1" max="8" value="4" step="1"><span class="pv" id="gvmB">4</span></div>
+        <div class="pr"><label>Line C merge</label><input type="range" id="gmC" min="1" max="8" value="4" step="1"><span class="pv" id="gvmC">4</span></div>
+        <div class="pr"><label>Final merge</label><input type="range" id="gmF" min="1" max="6" value="3" step="1"><span class="pv" id="gvmF">3</span></div>
+        <div class="sec">Logistics</div>
+        <div class="pr"><label>Transfer (min)</label><input type="range" id="gtrv" min="1" max="30" value="5" step="1"><span class="pv" id="gvtrv">5</span></div>
+        <div class="pr"><label>Variance</label><input type="range" id="gtvar" min="0" max="15" value="3" step="1"><span class="pv" id="gvtvar">3</span></div>
+        <div class="sec">Scheduling</div>
+        <div class="pr"><label>Batch (days)</label><input type="range" id="gbatch" min="3" max="30" value="7" step="1"><span class="pv" id="gvbatch">7</span></div>
+        <div class="sec">Stochastics</div>
+        <div class="pr"><label>Eff. sigma</label><input type="range" id="gsig" min="1" max="30" value="12" step="1"><span class="pv" id="gvsig">12%</span></div>
+        <div class="pr"><label>Primary rec.</label><input type="range" id="gprim" min="80" max="99" value="95" step="1"><span class="pv" id="gvprim">95%</span></div>
+        <div class="pr"><label>Secondary rec.</label><input type="range" id="gsec" min="70" max="95" value="85" step="1"><span class="pv" id="gvsec">85%</span></div>
+      </div>
+
+    </div><!-- #tbody -->
+    <div id="logbar"></div>
+  </div><!-- #sb -->
+
+</div><!-- #ws -->
+</div><!-- #app -->
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const randExp=m=>-m*Math.log(Math.max(1-Math.random(),1e-9));
+const randNorm=(mu,sig)=>{const u=1-Math.random()+1e-9,v=Math.random();return mu+sig*Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)};
+
+// ── MACHINE DEFS ────────────────────────────────────────────────
+const MDEFS=[
+  {id:0,name:'CNC-A1',line:'A',ct:8, br:6, rt:20,ew:6, desc:'Rough milling'},
+  {id:1,name:'CNC-A2',line:'A',ct:11,br:10,rt:28,ew:5, desc:'Finish turning'},
+  {id:2,name:'CNC-A3',line:'A',ct:7, br:5, rt:15,ew:7, desc:'Drilling'},
+  {id:3,name:'CNC-A4',line:'A',ct:15,br:9, rt:35,ew:4, desc:'Grinding'},
+  {id:4,name:'CNC-B1',line:'B',ct:9, br:7, rt:22,ew:6, desc:'Sheet forming'},
+  {id:5,name:'CNC-B2',line:'B',ct:6, br:4, rt:15,ew:8, desc:'Laser cut'},
+  {id:6,name:'CNC-B3',line:'B',ct:13,br:14,rt:40,ew:5, desc:'Welding'},
+  {id:7,name:'CNC-B4',line:'B',ct:8, br:6, rt:18,ew:6, desc:'Deburring'},
+  {id:8,name:'CNC-C1',line:'C',ct:10,br:8, rt:25,ew:7, desc:'Casting prep'},
+  {id:9,name:'CNC-C2',line:'C',ct:7, br:5, rt:12,ew:9, desc:'EDM'},
+  {id:10,name:'CNC-C3',line:'C',ct:16,br:11,rt:45,ew:4, desc:'Honing'},
+  {id:11,name:'CNC-C4',line:'C',ct:9, br:7, rt:20,ew:6, desc:'CMM inspect'},
+];
+const MP=MDEFS.map(d=>({...d}));
+function GP(){return{mA:+$('gmA').value,mB:+$('gmB').value,mC:+$('gmC').value,mF:+$('gmF').value,trv:+$('gtrv').value,tvar:+$('gtvar').value,batch:+$('gbatch').value,sig:+$('gsig').value/100,prim:+$('gprim').value/100,sec:+$('gsec').value/100}}
+
+// ── PRIORITY QUEUE ───────────────────────────────────────────────
+class PQ{constructor(){this.h=[]}push(e){this.h.push(e);this._up(this.h.length-1)}pop(){if(!this.h.length)return null;const t=this.h[0],l=this.h.pop();if(this.h.length){this.h[0]=l;this._dn(0)}return t}peek(){return this.h[0]||null}get size(){return this.h.length}_up(i){while(i>0){const p=(i-1)>>1;if(this.h[p][0]<=this.h[i][0])break;[this.h[p],this.h[i]]=[this.h[i],this.h[p]];i=p}}_dn(i){const n=this.h.length;while(1){let s=i,l=2*i+1,r=2*i+2;if(l<n&&this.h[l][0]<this.h[s][0])s=l;if(r<n&&this.h[r][0]<this.h[s][0])s=r;if(s===i)break;[this.h[s],this.h[i]]=[this.h[i],this.h[s]];i=s}}}
+
+// ── DES ENGINE ───────────────────────────────────────────────────
+class DES{
+  constructor(){this.reset()}
+  reset(){
+    this.pq=new PQ();this.now=0;this.pid=0;
+    this.finalOut=0;this.lineOut={A:0,B:0,C:0};
+    this.energy=0;this.batches=0;this.transit=new Set();
+    this.qA=this.qB=this.qC=this.qF=0;
+    this.busy={A:false,B:false,C:false,F:false};
+    this.evLog=[];
+    this.ts={t:[],final:[],wip:[],oee:[],en:[],qA:[],qB:[],qC:[],qF:[]};
+    this.mHistory={};for(let i=0;i<12;i++)this.mHistory[i]=[];
+    this.machines=MDEFS.map(d=>({id:d.id,name:d.name,line:d.line,state:'idle',ss:0,partsRun:0,runTime:0,brokenTime:0,toolWear:0,util:0}));
+    for(const m of this.machines)this.pq.push([Math.random()*2,'START',m.id,null,null]);
+    this.pq.push([GP().batch*24*60,'BATCH',1,null,null]);
+  }
+  step(maxEv,maxT){
+    let ev=0;const events=[];
+    while(ev<maxEv&&this.pq.size&&this.pq.peek()[0]<=maxT){
+      const[t,et,a,b,c]=this.pq.pop();this.now=t;
+      const r=this._h(et,a,b,c);if(r)events.push(r);ev++;
+    }
+    return events;
+  }
+  _h(et,a,b,c){if(et==='START')return this._start(a);if(et==='DONE')return this._done(a,b);if(et==='ARV')return this._arrive(b,c);if(et==='ADONE')return this._adone(a);if(et==='ARVF')return this._arvF();if(et==='FDONE')return this._fdone();if(et==='REP')return this._rep(a);if(et==='BATCH')return this._batch(a)}
+  _start(mid){
+    const m=this.machines[mid],p=MP[mid],gp=GP();
+    if(m.state==='broken')return null;
+    if(Math.random()<p.br/100){m.state='broken';m.ss=this.now;const rt=Math.max(randExp(p.rt)+5,5);this.pq.push([this.now+rt,'REP',mid,null,null]);this._log('break',mid,`${p.name} breakdown — repair ${rt.toFixed(0)}min`);return{type:'break',mid}}
+    const eff=Math.max(randNorm(1,gp.sig),0.4),ct=p.ct/eff;
+    m.state='running';m.ss=this.now;const pid=this.pid++;
+    this.pq.push([this.now+ct,'DONE',mid,pid,null]);
+    this.energy+=p.ew*(ct/60);m.toolWear=Math.min(m.toolWear+(ct/60)*0.015,1);
+    return null;
+  }
+  _done(mid,pid){
+    const m=this.machines[mid],gp=GP();
+    m.partsRun++;m.runTime+=this.now-m.ss;m.state='idle';
+    this.transit.add(pid);
+    const tt=gp.trv+randExp(Math.max(gp.tvar,0.5));
+    this.pq.push([this.now+tt,'ARV',null,pid,m.line]);
+    this.pq.push([this.now+0.2,'START',mid,null,null]);
+    return{type:'done',mid,pid,line:m.line}
+  }
+  _arrive(pid,line){
+    this.transit.delete(pid);const gp=GP();
+    const merge={A:gp.mA,B:gp.mB,C:gp.mC}[line];
+    if(line==='A')this.qA++;else if(line==='B')this.qB++;else this.qC++;
+    const q={A:this.qA,B:this.qB,C:this.qC}[line];
+    if(!this.busy[line]&&q>=merge){
+      if(line==='A')this.qA-=merge;else if(line==='B')this.qB-=merge;else this.qC-=merge;
+      this.busy[line]=true;const at=Math.max(randNorm(18,4),6);
+      this.pq.push([this.now+at,'ADONE',line,null,null]);
+      this._log('assy',null,`Assembly ${line} started (${merge} parts)`);
+      return{type:'assy_start',line}
+    }
+    return null
+  }
+  _adone(line){
+    this.busy[line]=false;this.lineOut[line]++;const gp=GP();
+    const merge={A:gp.mA,B:gp.mB,C:gp.mC}[line];
+    const pid=this.pid++;this.transit.add(pid);
+    const tt=gp.trv+randExp(Math.max(gp.tvar,0.5));
+    this.pq.push([this.now+tt,'ARVF',null,null,null]);
+    const q={A:this.qA,B:this.qB,C:this.qC}[line];
+    if(q>=merge){if(line==='A')this.qA-=merge;else if(line==='B')this.qB-=merge;else this.qC-=merge;this.busy[line]=true;this.pq.push([this.now+Math.max(randNorm(18,4),6),'ADONE',line,null,null])}
+    this._log('assy',null,`✓ Sub-assy ${line} done (${this.lineOut[line]})`);
+    return{type:'adone',line}
+  }
+  _arvF(){
+    this.qF++;const gp=GP();
+    if(!this.busy.F&&this.qF>=gp.mF){this.qF-=gp.mF;this.busy.F=true;this.pq.push([this.now+Math.max(randNorm(28,6),10),'FDONE',null,null,null])}
+    return null
+  }
+  _fdone(){
+    this.busy.F=false;this.finalOut++;const gp=GP();
+    const h=this.now/60;
+    if(!this.ts.t.length||h-this.ts.t[this.ts.t.length-1]>0.3)this._snap();
+    if(this.qF>=gp.mF){this.qF-=gp.mF;this.busy.F=true;this.pq.push([this.now+Math.max(randNorm(28,6),10),'FDONE',null,null,null])}
+    this._log('final',null,`🏁 FINAL #${this.finalOut} complete!`);
+    return{type:'final'}
+  }
+  _rep(mid){
+    const m=this.machines[mid];m.brokenTime+=this.now-m.ss;m.state='idle';m.ss=this.now;
+    this.pq.push([this.now+0.3,'START',mid,null,null]);
+    this._log('repair',mid,`${MP[mid].name} repaired`);
+    return{type:'repair',mid}
+  }
+  _batch(n){
+    this.qA=this.qB=this.qC=0;this.batches++;
+    this.pq.push([this.now+GP().batch*24*60,'BATCH',n+1,null,null]);
+    this._log('batch',null,`Batch #${n} cleanup at ${(this.now/60).toFixed(0)}h`);
+    return{type:'batch'}
+  }
+  _log(type,mid,msg){
+    this.evLog.push({type,time:(this.now/60).toFixed(1),machine:mid!=null?MP[mid].name:'—',msg});
+    if(this.evLog.length>1500)this.evLog=this.evLog.slice(-800);
+  }
+  _snap(){
+    const T=Math.max(this.now,1);
+    for(const m of this.machines)m.util=m.runTime/T;
+    const h=this.now/60;
+    const tb=this.machines.reduce((s,m)=>s+m.brokenTime,0);
+    const avail=Math.max((T*12-tb)/(T*12),0);
+    const gp=GP();const oee=avail*0.91*gp.prim*gp.sec*100;
+    this.ts.t.push(+h.toFixed(2));this.ts.final.push(this.finalOut);
+    this.ts.wip.push(this.qA+this.qB+this.qC+this.qF+this.transit.size);
+    this.ts.oee.push(+oee.toFixed(1));this.ts.en.push(+this.energy.toFixed(0));
+    this.ts.qA.push(this.qA);this.ts.qB.push(this.qB);this.ts.qC.push(this.qC);this.ts.qF.push(this.qF);
+    for(const m of this.machines)this.mHistory[m.id].push(+(m.util*100).toFixed(1));
+  }
+  getKPIs(){
+    const T=Math.max(this.now,1);
+    for(const m of this.machines)m.util=m.runTime/T;
+    const sorted=[...this.machines].sort((a,b)=>b.util-a.util);
+    const simH=T/60;
+    const tb=this.machines.reduce((s,m)=>s+m.brokenTime,0);
+    const avail=Math.max((T*12-tb)/(T*12),0);
+    const gp=GP();
+    const oee=(avail*0.91*gp.prim*gp.sec*100).toFixed(1);
+    return{
+      finalOut:this.finalOut,lineOut:{...this.lineOut},oee,
+      simH:simH.toFixed(1),tph:(this.finalOut/simH).toFixed(2),
+      energy:this.energy.toFixed(0),batches:this.batches,
+      wip:this.qA+this.qB+this.qC+this.qF+this.transit.size,
+      qA:this.qA,qB:this.qB,qC:this.qC,qF:this.qF,
+      machines:this.machines.map(m=>({...m,utilPct:(m.util*100).toFixed(1),wearPct:(m.toolWear*100).toFixed(1),brokenH:(m.brokenTime/60).toFixed(1)})),
+      bn:sorted.map(m=>m.id)
+    }
+  }
+}
+
+// ── THREE.JS SCENE ───────────────────────────────────────────────
+const canvas=$('cv'),wrap=$('left');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.setClearColor(0xf0ede4,1);
+
+const scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0xf0ede4,0.010);
+
+const camera=new THREE.PerspectiveCamera(50,1,0.1,300);
+camera.position.set(0,22,32);camera.lookAt(2,0,0);
+
+const amb=new THREE.AmbientLight(0xffffff,0.55);scene.add(amb);
+const sun=new THREE.DirectionalLight(0xfff8e8,1.1);
+sun.position.set(15,30,15);sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-40;sun.shadow.camera.right=40;
+sun.shadow.camera.top=40;sun.shadow.camera.bottom=-40;sun.shadow.camera.far=100;
+scene.add(sun);
+const fill=new THREE.DirectionalLight(0xaaccff,0.3);fill.position.set(-10,12,-8);scene.add(fill);
+const pt=new THREE.PointLight(0xffeecc,0.35,50);pt.position.set(0,10,0);scene.add(pt);
+
+const floorM=new THREE.Mesh(new THREE.PlaneGeometry(90,90),new THREE.MeshLambertMaterial({color:0xe8e4d8}));
+floorM.rotation.x=-Math.PI/2;floorM.receiveShadow=true;scene.add(floorM);
+scene.add(new THREE.GridHelper(90,90,0xccccbb,0xddddd0));
+
+const LC={A:0x2563EB,B:0xC2410C,C:0x7C3AED};
+const AC={A:0x1E40AF,B:0x9A3412,C:0x6D28D9};
+const FC=0x166534;
+
+function mkMachine(x,z,color){
+  const g=new THREE.Group();g.position.set(x,0,z);
+  const base=new THREE.Mesh(new THREE.BoxGeometry(2.6,0.22,2.6),new THREE.MeshLambertMaterial({color:0x888880}));
+  base.position.y=0.11;base.receiveShadow=true;g.add(base);
+  const body=new THREE.Mesh(new THREE.BoxGeometry(2.1,1.9,2.1),new THREE.MeshLambertMaterial({color}));
+  body.position.y=1.07;body.castShadow=true;g.add(body);
+  const top=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.14,2.2),new THREE.MeshLambertMaterial({color:0xaaaaaa}));
+  top.position.y=2.08;g.add(top);
+  const scr=new THREE.Mesh(new THREE.PlaneGeometry(0.95,0.6),new THREE.MeshBasicMaterial({color:0x0a1628}));
+  scr.position.set(0,1.3,1.06);g.add(scr);
+  const glow=new THREE.Mesh(new THREE.PlaneGeometry(0.88,0.55),new THREE.MeshBasicMaterial({color:0x00ff88}));
+  glow.position.set(0,1.3,1.07);g.add(glow);
+  const sp=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,1.1,10),new THREE.MeshLambertMaterial({color:0xbbbbbb}));
+  sp.position.set(0.35,1.75,0);sp.castShadow=true;g.add(sp);
+  const led=new THREE.Mesh(new THREE.SphereGeometry(0.14,10,10),new THREE.MeshBasicMaterial({color:0x22c55e}));
+  led.position.set(0.82,2.0,1.06);g.add(led);
+  const hdl=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,0.42,6),new THREE.MeshLambertMaterial({color:0x444}));
+  hdl.rotation.z=Math.PI/2;hdl.position.set(-0.3,1.05,1.06);g.add(hdl);
+  g._body=body;g._led=led;g._sp=sp;g._glow=glow;
+  return g;
+}
+
+function mkAssy(x,z,color){
+  const g=new THREE.Group();g.position.set(x,0,z);
+  const plat=new THREE.Mesh(new THREE.BoxGeometry(6,0.22,4),new THREE.MeshLambertMaterial({color:0x999990}));
+  plat.position.y=0.11;plat.receiveShadow=true;g.add(plat);
+  const table=new THREE.Mesh(new THREE.BoxGeometry(5.5,0.24,3.5),new THREE.MeshLambertMaterial({color}));
+  table.position.y=1.14;table.castShadow=true;g.add(table);
+  [[-2.3,1.4],[-2.3,-1.4],[2.3,1.4],[2.3,-1.4]].forEach(([lx,lz])=>{
+    const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,1.12,8),new THREE.MeshLambertMaterial({color:0x555}));
+    leg.position.set(lx,0.56,lz);g.add(leg);
+  });
+  const sign=new THREE.Mesh(new THREE.BoxGeometry(4.2,0.62,0.09),new THREE.MeshLambertMaterial({color}));
+  sign.position.set(0,2.05,1.8);g.add(sign);
+  g._table=table;g._col=color;
+  return g;
+}
+
+const MPOS=[
+  {x:-13,z:-12},{x:-7,z:-12},{x:-1,z:-12},{x:5,z:-12},
+  {x:-13,z:-2}, {x:-7,z:-2}, {x:-1,z:-2}, {x:5,z:-2},
+  {x:-13,z:8},  {x:-7,z:8},  {x:-1,z:8},  {x:5,z:8},
+];
+const APOS={A:{x:15,z:-12},B:{x:15,z:-2},C:{x:15,z:8}};
+const FPOS={x:26,z:-2};
+
+const machObjs=MPOS.map((pos,i)=>{const m=mkMachine(pos.x,pos.z,LC[MDEFS[i].line]);scene.add(m);return m});
+const assyObjs={A:mkAssy(APOS.A.x,APOS.A.z,AC.A),B:mkAssy(APOS.B.x,APOS.B.z,AC.B),C:mkAssy(APOS.C.x,APOS.C.z,AC.C)};
+const finalObj=mkAssy(FPOS.x,FPOS.z,FC);
+Object.values(assyObjs).forEach(a=>scene.add(a));scene.add(finalObj);
+
+// pillars
+function mkPillar(x,z){const m=new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.28,7,8),new THREE.MeshLambertMaterial({color:0xd0cec4}));m.position.set(x,3.5,z);m.castShadow=true;scene.add(m)}
+[-18,-9,0,9,18].forEach(x=>[-17,13].forEach(z=>mkPillar(x,z)));
+
+// conveyors
+function mkConv(x1,z1,x2,z2,color){
+  const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
+  const m=new THREE.Mesh(new THREE.BoxGeometry(len,0.09,0.45),new THREE.MeshLambertMaterial({color,transparent:true,opacity:0.65}));
+  m.position.set((x1+x2)/2,0.65,(z1+z2)/2);m.rotation.y=Math.atan2(dx,dz);scene.add(m);
+}
+MPOS.slice(0,4).forEach(p=>mkConv(p.x,p.z,APOS.A.x,APOS.A.z,0x2563EB));
+MPOS.slice(4,8).forEach(p=>mkConv(p.x,p.z,APOS.B.x,APOS.B.z,0xC2410C));
+MPOS.slice(8).forEach(p=>mkConv(p.x,p.z,APOS.C.x,APOS.C.z,0x7C3AED));
+mkConv(APOS.A.x,APOS.A.z,FPOS.x,FPOS.z,0x166534);
+mkConv(APOS.B.x,APOS.B.z,FPOS.x,FPOS.z,0x166534);
+mkConv(APOS.C.x,APOS.C.z,FPOS.x,FPOS.z,0x166534);
+
+// zone highlights
+function mkZone(x,z,color){const m=new THREE.Mesh(new THREE.PlaneGeometry(22,4),new THREE.MeshLambertMaterial({color,transparent:true,opacity:0.1}));m.rotation.x=-Math.PI/2;m.position.set(x,0.015,z);scene.add(m)}
+mkZone(-4,-12,0x2563EB);mkZone(-4,-2,0xC2410C);mkZone(-4,8,0x7C3AED);
+
+// parts
+const ptGeo=new THREE.BoxGeometry(0.44,0.26,0.44);
+const ptMat={A:new THREE.MeshLambertMaterial({color:0x60a5fa}),B:new THREE.MeshLambertMaterial({color:0xfb923c}),C:new THREE.MeshLambertMaterial({color:0xa78bfa}),F:new THREE.MeshLambertMaterial({color:0x4ade80})};
+const ptPool=[],ptActive=[];
+function spawnPart(sx,sz,dx,dz,line,dur){
+  let m=ptPool.pop();
+  if(!m){m=new THREE.Mesh(ptGeo,ptMat[line]);m.castShadow=true;scene.add(m)}
+  m.material=ptMat[line]||ptMat.A;m.visible=true;
+  ptActive.push({mesh:m,src:new THREE.Vector3(sx,1.4,sz),dst:new THREE.Vector3(dx,1.15,dz),t:0,dur:dur||2});
+}
+
+// labels
+const ll=$('ll');
+function mkLbl(txt,bg,tc='#fff'){
+  const d=document.createElement('div');d.className='nlbl';
+  d.style.background=bg;d.style.color=tc;d.textContent=txt;
+  ll.appendChild(d);return d;
+}
+const mLbls=MPOS.map((pos,i)=>{const c={A:'rgba(30,64,175,.85)',B:'rgba(154,52,18,.85)',C:'rgba(109,40,217,.85)'};return mkLbl(MDEFS[i].name,c[MDEFS[i].line])});
+const aLbls={A:mkLbl('Assembly A','rgba(30,64,175,.85)'),B:mkLbl('Assembly B','rgba(154,52,18,.85)'),C:mkLbl('Assembly C','rgba(109,40,217,.85)')};
+const fLbl=mkLbl('FINAL','rgba(22,101,52,.9)');
+
+function proj(wx,wy,wz){
+  const v=new THREE.Vector3(wx,wy,wz).project(camera);
+  const w=$('left').offsetWidth,h=$('left').offsetHeight;
+  return{x:(v.x+1)/2*w,y:(-v.y+1)/2*h};
+}
+function plLbl(el,wx,wy,wz){const p=proj(wx,wy,wz);el.style.left=p.x+'px';el.style.top=p.y+'px'}
+function updateLabels(){
+  MPOS.forEach((pos,i)=>plLbl(mLbls[i],pos.x,3.1,pos.z));
+  plLbl(aLbls.A,APOS.A.x,3.2,APOS.A.z);plLbl(aLbls.B,APOS.B.x,3.2,APOS.B.z);plLbl(aLbls.C,APOS.C.x,3.2,APOS.C.z);
+  plLbl(fLbl,FPOS.x,3.2,FPOS.z);
+}
+
+// orbit
+let drg=false,lmx=0,lmy=0,theta=-0.15,phi=0.85,radius=36,vmode=0;
+const VIEWS=[{theta:-0.15,phi:0.85,r:36},{theta:0,phi:0.4,r:55},{theta:1.57,phi:0.78,r:42}];
+function applyCamera(){camera.position.set(radius*Math.sin(phi)*Math.sin(theta),radius*Math.cos(phi),radius*Math.sin(phi)*Math.cos(theta));camera.lookAt(2,0,0)}
+applyCamera();
+canvas.addEventListener('mousedown',e=>{drg=true;lmx=e.clientX;lmy=e.clientY});
+window.addEventListener('mouseup',()=>drg=false);
+window.addEventListener('mousemove',e=>{if(!drg)return;theta-=(e.clientX-lmx)*0.007;phi=clamp(phi-(e.clientY-lmy)*0.007,0.18,1.45);lmx=e.clientX;lmy=e.clientY;vmode=-1;applyCamera()});
+canvas.addEventListener('wheel',e=>{radius=clamp(radius+e.deltaY*0.04,10,70);vmode=-1;applyCamera();e.preventDefault()},{passive:false});
+function cycleCamera(){vmode=(vmode<0?0:vmode+1)%VIEWS.length;const v=VIEWS[vmode];theta=v.theta;phi=v.phi;radius=v.r;applyCamera()}
+
+function resize(){
+  const w=$('left').offsetWidth,h=$('left').offsetHeight;
+  renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe($('left'));setTimeout(resize,60);
+
+// ── VIEW TOGGLE ──────────────────────────────────────────────────
+let analyticsVisible=false;
+function toggleView(){
+  analyticsVisible=!analyticsVisible;
+  $('analytics').style.display=analyticsVisible?'block':'none';
+  $('three-wrap').style.visibility=analyticsVisible?'hidden':'visible';
+  $('ll').style.visibility=analyticsVisible?'hidden':'visible';
+  $('view-toggle').textContent=analyticsVisible?'🎲 3D Scene':'📊 Analytics';
+  $('view-toggle').className='btn '+(analyticsVisible?'toggled':'');
+  $('view-btn').style.display=analyticsVisible?'none':'';
+  if(analyticsVisible)renderAnalytics();
+}
+
+// ── PLOTLY CONFIG ────────────────────────────────────────────────
+const PLC={displayModeBar:false,responsive:true};
+const PLL=(extra={})=>Object.assign({margin:{l:38,r:12,t:12,b:36},plot_bgcolor:'#fff',paper_bgcolor:'#fff',font:{size:10,family:'system-ui'},xaxis:{showgrid:true,gridcolor:'#f0f0f0',zeroline:false},yaxis:{showgrid:true,gridcolor:'#f0f0f0',zeroline:false},showlegend:false},extra);
+
+function renderAnalytics(){
+  const kpi=des.getKPIs();
+  const ts=des.ts;
+
+  // KPI cards row
+  const kpiData=[
+    {label:'Final output',value:kpi.finalOut,unit:'units',color:'#0F6E56'},
+    {label:'OEE',value:kpi.oee+'%',unit:'avail×perf×qual',color:+kpi.oee>=75?'#0F6E56':+kpi.oee>=55?'#BA7517':'#A32D2D'},
+    {label:'Throughput/h',value:kpi.tph,unit:'units/hour',color:'#185FA5'},
+    {label:'Energy',value:(+kpi.energy).toLocaleString(),unit:'kWh total',color:'#BA7517'},
+    {label:'Line A',value:kpi.lineOut.A,unit:'sub-assemblies',color:'#2563EB'},
+    {label:'Line B',value:kpi.lineOut.B,unit:'sub-assemblies',color:'#C2410C'},
+    {label:'Line C',value:kpi.lineOut.C,unit:'sub-assemblies',color:'#7C3AED'},
+    {label:'Sim time',value:kpi.simH+'h',unit:'simulated',color:'#185FA5'},
+  ];
+  $('an-kpi-row').innerHTML=kpiData.map(k=>`
+    <div class="acard" style="text-align:center;padding:8px 10px">
+      <div style="font-size:9px;color:var(--t2);margin-bottom:3px">${k.label}</div>
+      <div style="font-size:20px;font-weight:600;color:${k.color};line-height:1.1">${k.value}</div>
+      <div style="font-size:8px;color:var(--t3)">${k.unit}</div>
+    </div>`).join('');
+
+  // Output trend with MC band effect (single run, area fill)
+  Plotly.react('an-output',[
+    {x:ts.t,y:ts.final,mode:'lines',fill:'tozeroy',line:{color:'#16a34a',width:2},fillcolor:'rgba(22,163,74,0.08)'}
+  ],PLL({xaxis:{title:'Sim hours'},yaxis:{title:'Units'}}),PLC);
+
+  // OEE with target line
+  Plotly.react('an-oee',[
+    {x:ts.t,y:ts.oee,mode:'lines',fill:'tozeroy',line:{color:'#0F6E56',width:2},fillcolor:'rgba(15,110,86,0.08)'},
+    {x:[ts.t[0],ts.t[ts.t.length-1]],y:[75,75],mode:'lines',line:{color:'#dc2626',width:1,dash:'dash'},showlegend:false}
+  ],PLL({yaxis:{range:[0,100],title:'OEE %'}}),PLC);
+
+  // Queues
+  Plotly.react('an-queues',[
+    {x:ts.t,y:ts.qA,name:'Queue A',mode:'lines',line:{color:'#2563EB',width:1.5}},
+    {x:ts.t,y:ts.qB,name:'Queue B',mode:'lines',line:{color:'#C2410C',width:1.5}},
+    {x:ts.t,y:ts.qC,name:'Queue C',mode:'lines',line:{color:'#7C3AED',width:1.5}},
+    {x:ts.t,y:ts.qF,name:'Final Q',mode:'lines',line:{color:'#16a34a',width:2,dash:'dot'}},
+  ],PLL({showlegend:true,legend:{orientation:'h',y:-0.4},xaxis:{title:'h'},yaxis:{title:'parts'}}),PLC);
+
+  // Utilisation bar
+  const ms=kpi.machines;
+  const utils=ms.map(m=>+m.utilPct);
+  const uColors=utils.map(u=>u>80?'#dc2626':u>65?'#f59e0b':'#22c55e');
+  Plotly.react('an-util',[
+    {type:'bar',x:ms.map(m=>m.name),y:utils,marker:{color:uColors},text:utils.map(u=>u+'%'),textposition:'outside'},
+    {x:[ms[0].name,ms[ms.length-1].name],y:[80,80],mode:'lines',line:{color:'#dc2626',width:1,dash:'dash'},showlegend:false}
+  ],PLL({yaxis:{range:[0,115],title:'Util %'},xaxis:{tickangle:-40}}),PLC);
+
+  // Line balance pie
+  Plotly.react('an-pie',[{
+    type:'pie',labels:['Line A','Line B','Line C'],
+    values:[kpi.lineOut.A,kpi.lineOut.B,kpi.lineOut.C],
+    hole:0.42,marker:{colors:['#2563EB','#C2410C','#7C3AED']},
+    textinfo:'label+percent',
+  }],{margin:{l:10,r:10,t:10,b:30},paper_bgcolor:'#fff',font:{size:10}},PLC);
+
+  // Energy
+  Plotly.react('an-energy',[
+    {x:ts.t,y:ts.en,mode:'lines',fill:'tozeroy',line:{color:'#d97706',width:2},fillcolor:'rgba(217,119,6,0.08)'}
+  ],PLL({xaxis:{title:'Sim hours'},yaxis:{title:'kWh'}}),PLC);
+
+  // Tool wear
+  const wears=ms.map(m=>+m.wearPct);
+  const wColors=wears.map(w=>w>70?'#dc2626':w>40?'#f59e0b':'#22c55e');
+  Plotly.react('an-wear',[{
+    type:'bar',x:ms.map(m=>m.name),y:wears,marker:{color:wColors},
+    text:wears.map(w=>w+'%'),textposition:'outside',
+  }],PLL({yaxis:{range:[0,120],title:'Wear %'},xaxis:{tickangle:-40}}),PLC);
+}
+
+// ── SIDEBAR UI ───────────────────────────────────────────────────
+function setTab(name,el){
+  ['kpi','mach','flow','params'].forEach(t=>$('t-'+t).style.display=t===name?'block':'none');
+  document.querySelectorAll('.stab').forEach(t=>t.classList.remove('on'));
+  el.classList.add('on');
+}
+
+// machine cards
+const lineBg={A:'#dbeafe',B:'#fee2d5',C:'#ede9fe'};
+const lineTc={A:'#1e3a8a',B:'#7c2d12',C:'#4c1d95'};
+let selectedMachine=null;
+
+function buildMachineCards(){
+  const list=$('mclist');list.innerHTML='';
+  MP.forEach((p,i)=>{
+    const c=document.createElement('div');c.className='mc';c.id='mc'+i;
+    c.innerHTML=`
+      <div class="mch">
+        <span class="mcd idle" id="d${i}"></span>
+        <span class="mcn">${p.name}</span>
+        <span class="mcbadge" style="background:${lineBg[p.line]};color:${lineTc[p.line]}">Line ${p.line}</span>
+        <span class="mcu" id="u${i}">0%</span>
+      </div>
+      <div style="font-size:9px;color:var(--t3);margin-bottom:4px">${p.desc}</div>
+      <div class="pr"><label>Cycle (min)</label><input type="range" id="ct${i}" min="2" max="45" value="${p.ct}" step="1"><span class="pv" id="ctv${i}">${p.ct}</span></div>
+      <div class="pr"><label>Breakdown %</label><input type="range" id="br${i}" min="0" max="35" value="${p.br}" step="1"><span class="pv" id="brv${i}">${p.br}%</span></div>
+      <div class="pr"><label>Repair (min)</label><input type="range" id="rp${i}" min="5" max="120" value="${p.rt}" step="1"><span class="pv" id="rpv${i}">${p.rt}</span></div>
+      <div class="pr"><label>Energy (kW)</label><input type="range" id="en${i}" min="1" max="25" value="${p.ew}" step="1"><span class="pv" id="env${i}">${p.ew}</span></div>
+      <div class="pr">
+        <label>Tool wear</label>
+        <div class="wt"><div class="wf" id="wf${i}" style="width:0%;background:var(--green)"></div></div>
+        <span class="pv" id="wv${i}">0%</span>
+      </div>`;
+    c.addEventListener('click',()=>selectMachine(i));
+    list.appendChild(c);
+    const bind=(pfx,key,suf)=>{
+      document.getElementById(pfx+i).addEventListener('input',function(){
+        MP[i][key]=parseFloat(this.value);
+        document.getElementById(pfx+'v'+i).textContent=this.value+(suf||'');
+      });
+    };
+    bind('ct','ct','');bind('br','br','%');bind('rp','rt','');bind('en','ew','');
+  });
+}
+buildMachineCards();
+
+function selectMachine(i){
+  selectedMachine=i;
+  document.querySelectorAll('.mc').forEach((c,j)=>{
+    c.classList.toggle('sel',j===i);
+  });
+  $('mdetail').style.display='block';
+  $('mdetail-title').textContent=MP[i].name+' — '+MP[i].desc+' — utilisation history';
+  drawMachineDetailChart(i);
+  // Also highlight in 3D
+  machObjs.forEach((m,j)=>{
+    m._body.material.emissive=new THREE.Color(j===i?0x112233:0x000000);
+    m._body.material.emissiveIntensity=j===i?0.3:0;
+  });
+}
+
+function drawMachineDetailChart(i){
+  const hist=des.mHistory[i];if(!hist.length)return;
+  const c=$('mdetail-chart');const W=c.offsetWidth||300,H=90;
+  c.width=W*2;c.height=H*2;
+  const ctx=c.getContext('2d');ctx.scale(2,2);
+  ctx.clearRect(0,0,W,H);
+  const maxV=Math.max(...hist,1);
+  ctx.strokeStyle='#185FA5';ctx.lineWidth=1.5;ctx.beginPath();
+  hist.forEach((v,idx)=>{
+    const x=(idx/(hist.length-1||1))*(W-10)+5;
+    const y=H-5-(v/maxV)*(H-15);
+    idx===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  ctx.fillStyle='rgba(37,99,235,0.08)';
+  ctx.lineTo((hist.length-1)/(hist.length-1||1)*(W-10)+5,H-5);
+  ctx.lineTo(5,H-5);ctx.fill();
+  // 80% line
+  ctx.strokeStyle='rgba(220,38,38,0.4)';ctx.lineWidth=0.5;ctx.setLineDash([2,2]);
+  const y80=H-5-(80/maxV)*(H-15);
+  ctx.beginPath();ctx.moveTo(5,y80);ctx.lineTo(W-5,y80);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ef4444';ctx.font='8px system-ui';ctx.fillText('80%',W-22,y80-2);
+  ctx.fillStyle='#185FA5';ctx.fillText('current: '+hist[hist.length-1]+'%',5,12);
+}
+
+// global param listeners
+[['gmA','gvmA',''],['gmB','gvmB',''],['gmC','gvmC',''],['gmF','gvmF',''],['gtrv','gvtrv',''],['gtvar','gvtvar',''],['gbatch','gvbatch',''],['gsig','gvsig','%'],['gprim','gvprim','%'],['gsec','gvsec','%']
+].forEach(([id,vid,suf])=>{$(id).addEventListener('input',function(){$(vid).textContent=this.value+suf})});
+
+
+// ── TIMEBAR ──────────────────────────────────────────────────────
+const SIM_DAYS_TARGET = 30; // assumed horizon for progress bar
+function updateTimebar(kpi) {
+  const simH = parseFloat(kpi.simH) || 0;
+  const simMin = simH * 60;
+
+  // Day / hour / minute
+  const totalMin = Math.round(simMin);
+  const days = Math.floor(totalMin / (24*60)) + 1;
+  const hh   = Math.floor((totalMin % (24*60)) / 60);
+  const mm   = totalMin % 60;
+  const hhStr = String(hh).padStart(2,'0');
+  const mmStr = String(mm).padStart(2,'0');
+
+  $('tb-day').textContent = `Day ${days}`;
+
+  // Shift logic: 3 shifts × 8h
+  let shiftName, shiftColor, shiftBg;
+  if (hh >= 6 && hh < 14)       { shiftName='Morning'; shiftColor='#085041'; shiftBg='#E1F5EE'; }
+  else if (hh >= 14 && hh < 22) { shiftName='Afternoon'; shiftColor='#633806'; shiftBg='#FAEEDA'; }
+  else                            { shiftName='Night'; shiftColor='#3C3489'; shiftBg='#EEEDFE'; }
+
+  $('tb-hm').textContent = `${hhStr}:${mmStr}  ·  Shift: ${shiftName}`;
+  const badge = $('tb-shift-badge');
+  badge.textContent = shiftName;
+  badge.style.background = shiftBg;
+  badge.style.color = shiftColor;
+
+  // Progress bar (relative to SIM_DAYS_TARGET days)
+  const pct = Math.min((simH / (SIM_DAYS_TARGET * 24)) * 100, 100);
+  $('tb-bar-fill').style.width = pct.toFixed(1) + '%';
+  $('tb-bar-r').textContent = pct.toFixed(0) + '%';
+  $('tb-bar-l').textContent = `Day ${days} of ${SIM_DAYS_TARGET}`;
+
+  // Color fill by OEE
+  const oeeN = parseFloat(kpi.oee) || 0;
+  $('tb-bar-fill').style.background = oeeN >= 75 ? '#4ade80' : oeeN >= 55 ? '#fbbf24' : '#f87171';
+
+  // Batch marker — next batch cleanup position on bar
+  const gp = GP();
+  const batchH = gp.batch * 24; // hours per batch period
+  const nextBatchH = Math.ceil(simH / batchH) * batchH;
+  const batchPct = Math.min((nextBatchH / (SIM_DAYS_TARGET * 24)) * 100, 99);
+  $('tb-bar-batch').style.left = batchPct.toFixed(1) + '%';
+
+  // Stats
+  $('tb-parts').textContent = kpi.tph;
+  $('tb-wip').textContent   = kpi.wip;
+  $('tb-oee2').textContent  = kpi.oee + '%';
+
+  // Next batch in hours
+  const untilBatch = nextBatchH - simH;
+  $('tb-eta').textContent = untilBatch > 0 ? untilBatch.toFixed(0) + 'h' : '—';
+}
+
+// ── KPI UPDATE ───────────────────────────────────────────────────
+function updateKPIs(kpi){
+  $('kFinal').textContent=kpi.finalOut;
+  const oN=+kpi.oee;$('kOee').textContent=kpi.oee+'%';$('kOee').className='kv '+(oN>=75?'cg':oN>=55?'ca':'cr');
+  $('kA').textContent=kpi.lineOut.A;$('kB').textContent=kpi.lineOut.B;$('kC').textContent=kpi.lineOut.C;
+  $('kTph').textContent=kpi.tph;
+  $('kWip').textContent=kpi.wip;$('kWip').className='kv '+(kpi.wip<10?'cg':kpi.wip<25?'ca':'cr');
+  $('kEn').textContent=(+kpi.energy).toLocaleString();$('kTime').textContent=kpi.simH+'h';$('kBatch').textContent=kpi.batches;
+
+  // bottleneck bars
+  const bnEl=$('bnbars');bnEl.innerHTML='';
+  [...kpi.machines].sort((a,b)=>+b.utilPct-+a.utilPct).slice(0,8).forEach(m=>{
+    const u=+m.utilPct,col=u>80?'var(--red)':u>65?'var(--amber)':'var(--green)';
+    bnEl.innerHTML+=`<div class="bnr"><span class="bnn">${m.name}</span><div class="bnt"><div class="bnf" style="width:${u}%;background:${col}"></div></div><span class="bnv" style="color:${col}">${u}%</span></div>`;
+  });
+
+  // trend chart
+  const tc=$('trendC');const W=tc.offsetWidth||310,H=55;
+  tc.width=W*2;tc.height=H*2;
+  const ctx=tc.getContext('2d');ctx.scale(2,2);ctx.clearRect(0,0,W,H);
+  const pts=des.ts.final;if(pts.length>1){
+    const maxV=Math.max(...pts,1);
+    ctx.strokeStyle='#16a34a';ctx.lineWidth=1.5;ctx.beginPath();
+    pts.forEach((v,i)=>{const x=(i/(pts.length-1))*W,y=H-(v/maxV)*(H-8)-4;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)});
+    ctx.stroke();ctx.fillStyle='rgba(22,163,74,0.1)';ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.fill();
+    ctx.fillStyle='#16a34a';ctx.font='8px system-ui';ctx.fillText('output: '+pts[pts.length-1],4,10);
+  }
+
+  // queue history chart
+  const qc=$('qhistC');if(qc){
+    const QW=qc.offsetWidth||310,QH=70;
+    qc.width=QW*2;qc.height=QH*2;
+    const qctx=qc.getContext('2d');qctx.scale(2,2);qctx.clearRect(0,0,QW,QH);
+    const hist=des.ts;if(hist.t.length>1){
+      const maxQ=Math.max(...hist.qA,...hist.qB,...hist.qC,...hist.qF,1);
+      const draw=(arr,color)=>{qctx.strokeStyle=color;qctx.lineWidth=1.2;qctx.beginPath();arr.forEach((v,i)=>{const x=(i/(arr.length-1))*QW,y=QH-(v/maxQ)*(QH-10)-5;i===0?qctx.moveTo(x,y):qctx.lineTo(x,y)});qctx.stroke()};
+      draw(hist.qA,'#60a5fa');draw(hist.qB,'#fb923c');draw(hist.qC,'#a78bfa');draw(hist.qF,'#4ade80');
+      qctx.font='8px system-ui';
+      qctx.fillStyle='#60a5fa';qctx.fillText('A:'+kpi.qA,4,10);
+      qctx.fillStyle='#fb923c';qctx.fillText('B:'+kpi.qB,28,10);
+      qctx.fillStyle='#a78bfa';qctx.fillText('C:'+kpi.qC,52,10);
+      qctx.fillStyle='#4ade80';qctx.fillText('F:'+kpi.qF,76,10);
+    }
+  }
+
+  // machine cards
+  kpi.machines.forEach((m,i)=>{
+    const dot=$('d'+i);if(dot)dot.className='mcd '+m.state;
+    const u=$('u'+i);if(u)u.textContent=m.utilPct+'%';
+    const wf=$('wf'+i),wv=$('wv'+i);
+    if(wf){const wp=+m.wearPct;wf.style.width=wp+'%';wf.style.background=wp<50?'var(--green)':wp<80?'var(--amber)':'var(--red)'}
+    if(wv)wv.textContent=m.wearPct+'%';
+    const card=$('mc'+i);
+    if(card&&selectedMachine!==i)card.className='mc'+(kpi.bn[0]===i?' b1':kpi.bn[1]===i?' b2':'');
+    // 3D updates
+    const mo=machObjs[i];
+    mo._led.material.color.setHex(m.state==='running'?0x22c55e:m.state==='broken'?0xef4444:0xfbbf24);
+    mo._glow.material.color.setHex(m.state==='running'?0x00ff88:m.state==='broken'?0xff3333:0xffaa00);
+    mo._body.material.color.setHex(kpi.bn[0]===i?0xdc2626:kpi.bn[1]===i?0xd97706:LC[MDEFS[i].line]);
+  });
+
+  // flow tab
+  const sh=+kpi.simH||1;
+  $('frates').innerHTML=`
+    <div class="fr"><span class="fk">Line A rate</span><span class="fv">${(kpi.lineOut.A/sh).toFixed(2)}/h</span></div>
+    <div class="fr"><span class="fk">Line B rate</span><span class="fv">${(kpi.lineOut.B/sh).toFixed(2)}/h</span></div>
+    <div class="fr"><span class="fk">Line C rate</span><span class="fv">${(kpi.lineOut.C/sh).toFixed(2)}/h</span></div>
+    <div class="fr"><span class="fk">Final rate</span><span class="fv cg">${kpi.tph}/h</span></div>`;
+  $('fqueues').innerHTML=`
+    <div class="fr"><span class="fk">Queue A</span><span class="fv">${kpi.qA}</span></div>
+    <div class="fr"><span class="fk">Queue B</span><span class="fv">${kpi.qB}</span></div>
+    <div class="fr"><span class="fk">Queue C</span><span class="fv">${kpi.qC}</span></div>
+    <div class="fr"><span class="fk">Final queue</span><span class="fv">${kpi.qF}</span></div>
+    <div class="fr"><span class="fk">In transit</span><span class="fv">${des.transit.size}</span></div>`;
+
+  // selected machine detail update
+  if(selectedMachine!==null)drawMachineDetailChart(selectedMachine);
+
+  // assembly pulse
+  const ts2=performance.now()*0.001;
+  ['A','B','C'].forEach(line=>{
+    const obj=assyObjs[line];
+    if(des.busy[line]){const p=0.85+Math.sin(ts2*3)*0.12,c=AC[line];obj._table.material.color.setRGB(((c>>16)&0xff)/255*p,((c>>8)&0xff)/255*p,(c&0xff)/255*p)}
+    else obj._table.material.color.setHex(AC[line]);
+  });
+  if(des.busy.F){const p=0.85+Math.sin(ts2*2)*0.12;finalObj._table.material.color.setRGB(0.09*p,0.4*p,0.2*p)}
+  else finalObj._table.material.color.setHex(FC);
+
+  // refresh analytics if visible
+  if(analyticsVisible)renderAnalytics();
+  updateTimebar(kpi);
+}
+
+// ── LOG ──────────────────────────────────────────────────────────
+const logEl=$('logbar');
+const LC2={final:'lf',break:'lb',repair:'lr',batch:'lba',assy:'la'};
+function addLog(evts){
+  evts.forEach(e=>{
+    if(!e)return;
+    const d=document.createElement('span');
+    d.className=LC2[e.type]||'';
+    d.textContent=`[${(des.now/60).toFixed(1)}h] ${e.msg}  `;
+    logEl.prepend(d);
+    if(logEl.children.length>100)logEl.removeChild(logEl.lastChild);
+  });
+}
+
+// ── SIM CONTROL ──────────────────────────────────────────────────
+let des=new DES(),running=false,speed=80;
+$('spsl').addEventListener('input',function(){speed=+this.value;$('spv').textContent=speed+'×'});
+$('runbtn').addEventListener('click',function(){
+  running=!running;this.textContent=running?'⏸ Pause':'▶ Run';this.className='btn '+(running?'go':'');
+});
+$('rstbtn').addEventListener('click',()=>{
+  running=false;$('runbtn').textContent='▶ Run';$('runbtn').className='btn go';
+  des=new DES();ptActive.length=0;
+  logEl.innerHTML='<span style="color:#6b7280">[0.0h] Reset — press ▶ Run</span>';
+  machObjs.forEach((m,i)=>m._body.material.color.setHex(LC[MDEFS[i].line]));
+  selectedMachine=null;$('mdetail').style.display='none';
+  updateKPIs(des.getKPIs());
+});
+
+// ── MAIN LOOP ────────────────────────────────────────────────────
+let lastTs=0,spin=0;
+function animate(ts){
+  requestAnimationFrame(animate);
+  const dt=Math.min((ts-lastTs)/1000,0.05);lastTs=ts;
+
+  if(running&&des.pq.size){
+    const tgt=des.now+dt*speed*60;
+    const evts=des.step(800,tgt).filter(Boolean);
+    const imp=evts.filter(e=>['final','break','repair','batch','adone'].includes(e.type));
+    if(imp.length)addLog(imp);
+    evts.forEach(e=>{
+      if(e.type==='done'&&e.mid!=null){const s=MPOS[e.mid],d=APOS[e.line];spawnPart(s.x,s.z,d.x,d.z,e.line,1.4+Math.random()*0.8)}
+      if(e.type==='adone'){const s=APOS[e.line];spawnPart(s.x,s.z,FPOS.x,FPOS.z,'F',2+Math.random()*1.2)}
+    });
+    updateKPIs(des.getKPIs());
+  }
+
+  spin+=dt*5;
+  machObjs.forEach((m,i)=>{if(des.machines[i].state==='running')m._sp.rotation.y=spin});
+
+  for(let i=ptActive.length-1;i>=0;i--){
+    const p=ptActive[i];p.t+=dt/p.dur;
+    if(p.t>=1){p.mesh.visible=false;ptPool.push(p.mesh);ptActive.splice(i,1)}
+    else{p.mesh.position.lerpVectors(p.src,p.dst,p.t);p.mesh.position.y+=Math.sin(p.t*Math.PI)*1.3;p.mesh.rotation.y=p.t*4}
+  }
+
+  if(!analyticsVisible){updateLabels();renderer.render(scene,camera)}
+}
+
+requestAnimationFrame(animate);
+addLog([{type:'info',msg:'Ready — press ▶ Run. Click 📊 Analytics for charts.'}]);
+updateKPIs(des.getKPIs());
+</script>
+</body>
+</html>
